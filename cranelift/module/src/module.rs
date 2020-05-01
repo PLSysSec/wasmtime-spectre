@@ -576,6 +576,11 @@ where
     where
         TS: binemit::TrapSink,
     {
+        let _func_name = &self.contents.functions[func].decl.name;
+        if _func_name == "guest_func_png_gamma_8bit_correct" {
+            let _s = _func_name;
+            // println!("Found: {}", s);
+        }
         info!(
             "defining function {}: {}",
             func,

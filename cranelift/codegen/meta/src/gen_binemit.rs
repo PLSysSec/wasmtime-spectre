@@ -7,6 +7,34 @@ use crate::srcgen::Formatter;
 
 use crate::cdsl::recipes::{EncodingRecipe, OperandConstraint, Recipes};
 
+fn do_pre_inst_inserts(fmt: &mut Formatter) {
+    fmt.line("let pre_padding = func.pre_paddings[inst];");
+    fmt.line("let pre_padding_bytes = cranelift_spectre::padding::get_padding_bytes(pre_padding);");
+    fmt.line("pre_padding_bytes.iter().for_each(|b| sink.put1(*b));");
+
+    fmt.line("if func.pre_lfence[inst] {");
+    fmt.indent(|fmt| {
+        fmt.line("let lfence_bytes = cranelift_spectre::inst::get_lfence();");
+        fmt.line("lfence_bytes.iter().for_each(|b| sink.put1(*b));");
+    });
+    fmt.line("}");
+}
+
+fn do_post_inst_inserts(fmt: &mut Formatter) {
+    fmt.line("if func.post_lfence[inst] {");
+    fmt.indent(|fmt| {
+        fmt.line("let lfence_bytes = cranelift_spectre::inst::get_lfence();");
+        fmt.line("lfence_bytes.iter().for_each(|b| sink.put1(*b));");
+    });
+    fmt.line("}");
+
+    fmt.line("let post_padding = func.post_paddings[inst];");
+    fmt.line(
+        "let post_padding_bytes = cranelift_spectre::padding::get_padding_bytes(post_padding);",
+    );
+    fmt.line("post_padding_bytes.iter().for_each(|b| sink.put1(*b));");
+}
+
 /// Generate code to handle a single recipe.
 ///
 /// - Unpack the instruction data, knowing the format.
@@ -85,6 +113,7 @@ fn gen_recipe(recipe: &EncodingRecipe, fmt: &mut Formatter) {
         match &recipe.emit {
             Some(emit) => {
                 fmt.multi_line(emit);
+                do_post_inst_inserts(fmt);
                 fmt.line("return;");
             }
             None => {
@@ -187,6 +216,9 @@ fn gen_isa(isa_name: &str, recipes: &Recipes, fmt: &mut Formatter) {
         fmt.line("let encoding = func.encodings[inst];");
         fmt.line("let bits = encoding.bits();");
         fmt.line("let inst_data = &func.dfg[inst];");
+
+        do_pre_inst_inserts(fmt);
+
         fmt.line("match encoding.recipe() {");
         fmt.indent(|fmt| {
             for (i, recipe) in recipes.iter() {
@@ -200,6 +232,8 @@ fn gen_isa(isa_name: &str, recipes: &Recipes, fmt: &mut Formatter) {
             fmt.line("_ => {},");
         });
         fmt.line("}");
+
+        do_post_inst_inserts(fmt);
 
         // Allow for unencoded ghost instructions. The verifier will check details.
         fmt.line("if encoding.is_legal() {");

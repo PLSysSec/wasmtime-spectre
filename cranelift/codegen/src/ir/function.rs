@@ -61,6 +61,18 @@ pub struct Function {
     /// Illegal instructions have the `Encoding::default()` value.
     pub encodings: InstEncodings,
 
+    /// Used for spectre resistance. Paddings for each instruction. 0 if not needed.
+    pub pre_paddings: SecondaryMap<Inst, u32>,
+
+    /// Used for spectre resistance. Paddings after each instruction. 0 if not needed.
+    pub post_paddings: SecondaryMap<Inst, u32>,
+
+    /// Used for spectre resistance. Whether to use lfence after the instruction.
+    pub pre_lfence: SecondaryMap<Inst, bool>,
+
+    /// Used for spectre resistance. Whether to use lfence after the instruction.
+    pub post_lfence: SecondaryMap<Inst, bool>,
+
     /// Location assigned to every value.
     pub locations: ValueLocations,
 
@@ -119,6 +131,10 @@ impl Function {
             dfg: DataFlowGraph::new(),
             layout: Layout::new(),
             encodings: SecondaryMap::new(),
+            pre_paddings: SecondaryMap::new(),
+            post_paddings: SecondaryMap::new(),
+            pre_lfence: SecondaryMap::new(),
+            post_lfence: SecondaryMap::new(),
             locations: SecondaryMap::new(),
             entry_diversions: EntryRegDiversions::new(),
             offsets: SecondaryMap::new(),

@@ -40,6 +40,30 @@ use crate::CodegenResult;
 use core::convert::TryFrom;
 use log::debug;
 
+#[cfg(feature = "basic-blocks")]
+use crate::ir::{Ebb, Inst, Value, ValueList};
+
+fn spectre_resistance_on_basic_block(cur: &mut FuncCursor, first_inst: &Inst) {
+    if cranelift_spectre::settings::get_spectre_mitigation()
+        == cranelift_spectre::settings::SpectreMitigation::STRAWMAN
+    {
+        cur.func.pre_lfence[*first_inst] = true;
+    }
+}
+
+fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst) {
+    let opcode = cur.func.dfg[*inst].opcode();
+    let _format = opcode.format();
+
+    if cranelift_spectre::settings::get_spectre_mitigation()
+        == cranelift_spectre::settings::SpectreMitigation::STRAWMAN
+    {
+        if opcode == Opcode::Call || opcode == Opcode::CallIndirect {
+            cur.func.post_lfence[*inst] = true;
+        }
+    }
+}
+
 /// Relax branches and compute the final layout of block headers in `func`.
 ///
 /// Fill in the `func.offsets` table so the function is ready for binary emission.
@@ -86,6 +110,9 @@ pub fn relax_branches(
         go_again = false;
         offset = 0;
 
+        let mut _inst_num = 0;
+        let mut first_inst_in_block;
+
         // Visit all instructions in layout order.
         let mut cur = FuncCursor::new(func);
         while let Some(block) = cur.next_block() {
@@ -97,10 +124,28 @@ pub fn relax_branches(
                 go_again = true;
             }
 
+            first_inst_in_block = true;
+
             while let Some(inst) = cur.next_inst() {
+                _inst_num = _inst_num + 1;
+
                 divert.apply(&cur.func.dfg[inst]);
 
                 let enc = cur.func.encodings[inst];
+
+                if first_inst_in_block {
+                    spectre_resistance_on_basic_block(&mut cur, &inst);
+                }
+
+                spectre_resistance_on_inst(&mut cur, &inst);
+
+                let pre_insert_size = cur.func.pre_paddings[inst]
+                    + if cur.func.pre_lfence[inst] {
+                        cranelift_spectre::inst::get_lfence().len() as u32
+                    } else {
+                        0
+                    };
+                offset += pre_insert_size;
 
                 // See if this is a branch has a range and a destination, and if the target is in
                 // range.
@@ -108,14 +153,22 @@ pub fn relax_branches(
                     if let Some(dest) = cur.func.dfg[inst].branch_destination() {
                         let dest_offset = cur.func.offsets[dest];
                         if !range.contains(offset, dest_offset) {
-                            offset +=
-                                relax_branch(&mut cur, &divert, offset, dest_offset, &encinfo, isa);
-                            continue;
+                            relax_branch(&mut cur, &divert, offset, dest_offset, &encinfo, isa);
                         }
                     }
                 }
 
-                offset += encinfo.byte_size(enc, inst, &divert, &cur.func);
+                // get enc again as it may be updated in relax_branch
+                let enc = cur.func.encodings[inst];
+                let inst_size = encinfo.byte_size(enc, inst, &divert, &cur.func);
+                let post_insert_size = cur.func.post_paddings[inst]
+                    + if cur.func.post_lfence[inst] {
+                        cranelift_spectre::inst::get_lfence().len() as u32
+                    } else {
+                        0
+                    };
+                offset += inst_size + post_insert_size;
+                first_inst_in_block = false;
             }
         }
     }
