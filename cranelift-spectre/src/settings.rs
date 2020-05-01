@@ -10,6 +10,7 @@ static mut SPECTRE_SETTINGS: SpectreSettings = SpectreSettings {
 #[derive(PartialEq, Debug, Clone)]
 pub enum SpectreMitigation {
     NONE,
+    LOADLFENCE,
     STRAWMAN,
 }
 

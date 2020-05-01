@@ -44,9 +44,8 @@ use log::debug;
 use crate::ir::{Ebb, Inst, Value, ValueList};
 
 fn spectre_resistance_on_basic_block(cur: &mut FuncCursor, first_inst: &Inst) {
-    if cranelift_spectre::settings::get_spectre_mitigation()
-        == cranelift_spectre::settings::SpectreMitigation::STRAWMAN
-    {
+    let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
+    if mitigation == cranelift_spectre::settings::SpectreMitigation::STRAWMAN {
         cur.func.pre_lfence[*first_inst] = true;
     }
 }
@@ -54,11 +53,14 @@ fn spectre_resistance_on_basic_block(cur: &mut FuncCursor, first_inst: &Inst) {
 fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst) {
     let opcode = cur.func.dfg[*inst].opcode();
     let _format = opcode.format();
+    let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
 
-    if cranelift_spectre::settings::get_spectre_mitigation()
-        == cranelift_spectre::settings::SpectreMitigation::STRAWMAN
-    {
+    if mitigation == cranelift_spectre::settings::SpectreMitigation::STRAWMAN {
         if opcode == Opcode::Call || opcode == Opcode::CallIndirect {
+            cur.func.post_lfence[*inst] = true;
+        }
+    } else if mitigation == cranelift_spectre::settings::SpectreMitigation::LOADLFENCE {
+        if opcode.can_load() {
             cur.func.post_lfence[*inst] = true;
         }
     }
