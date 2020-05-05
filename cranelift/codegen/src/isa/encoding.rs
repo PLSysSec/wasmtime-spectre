@@ -148,10 +148,15 @@ impl EncInfo {
         divert: &RegDiversions,
         func: &Function,
     ) -> CodeOffset {
-        self.sizing.get(enc.recipe()).map_or(0, |s| {
-            let compute_size = s.compute_size;
-            CodeOffset::from(compute_size(&s, enc, inst, divert, func))
-        })
+        let replace_len = func.replacement[inst].len();
+        if replace_len > 0 {
+            CodeOffset::from(replace_len as u8)
+        } else {
+            self.sizing.get(enc.recipe()).map_or(0, |s| {
+                let compute_size = s.compute_size;
+                CodeOffset::from(compute_size(&s, enc, inst, divert, func))
+            })
+        }
     }
 
     /// Get the branch range that is supported by `enc`, if any.

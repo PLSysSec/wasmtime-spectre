@@ -375,6 +375,15 @@ fn expand_br_table_jt(
 
     // Bounds check.
     let table_size = pos.func.jump_tables[table].len() as i64;
+    let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
+
+    if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
+        if !((table_size as u64).is_power_of_two()) {
+            // SFI scheme guarantees through changes elsewhere that callback tables are always powers of 2
+            panic!("Spectre SFI scheme failure. Expected power of 2 for jump table");
+        }
+    }
+
     let oob = pos
         .ins()
         .icmp_imm(IntCC::UnsignedGreaterThanOrEqual, arg, table_size);
@@ -385,11 +394,15 @@ fn expand_br_table_jt(
 
     let addr_ty = isa.pointer_type();
 
-    let arg = if pos.func.dfg.value_type(arg) == addr_ty {
+    let mut arg = if pos.func.dfg.value_type(arg) == addr_ty {
         arg
     } else {
         pos.ins().uextend(addr_ty, arg)
     };
+
+    if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
+        arg = pos.ins().band_imm(arg, table_size - 1);
+    }
 
     let base_addr = pos.ins().jump_table_base(addr_ty, table);
     let entry = pos

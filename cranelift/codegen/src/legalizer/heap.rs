@@ -32,6 +32,14 @@ pub fn expand_heap_addr(
 
     match func.heaps[heap].style {
         ir::HeapStyle::Dynamic { bound_gv } => {
+            let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
+
+            if !(mitigation == cranelift_spectre::settings::SpectreMitigation::NONE
+                || mitigation == cranelift_spectre::settings::SpectreMitigation::STRAWMAN
+                || mitigation == cranelift_spectre::settings::SpectreMitigation::LOADLFENCE)
+            {
+                panic!("Only strawman loadlfence spectre mitigations are allowed with dynamically sized heaps. Use 4GB heaps with 4GB guard pages with other mitigations schemes");
+            }
             dynamic_addr(isa, inst, heap, offset, access_size, bound_gv, func)
         }
         ir::HeapStyle::Static { bound } => static_addr(
@@ -135,6 +143,11 @@ fn static_addr(
     // We may be able to omit the check entirely for 32-bit offsets if the heap bound is 4 GB or
     // more.
     if offset_ty != ir::types::I32 || limit < 0xffff_ffff {
+        let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
+
+        if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
+            panic!("SFI spectre protection scheme only supports 4GB heaps with 4GB guard pages.");
+        }
         let oob = if limit & 1 == 1 {
             // Prefer testing `offset >= limit - 1` when limit is odd because an even number is
             // likely to be a convenient constant on ARM and other RISC architectures.

@@ -166,15 +166,27 @@ pub fn parse_table_section(
 ) -> WasmResult<()> {
     environ.reserve_tables(tables.get_count())?;
 
+    let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
+
     for entry in tables {
         let table = entry?;
+        let min = if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
+            table.limits.initial.next_power_of_two()
+        } else {
+            table.limits.initial
+        };
+        let max = if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
+            table.limits.maximum.map(|v| v.next_power_of_two())
+        } else {
+            table.limits.maximum
+        };
         environ.declare_table(Table {
             ty: match tabletype_to_type(table.element_type, environ)? {
                 Some(t) => TableElementType::Val(t),
                 None => TableElementType::Func,
             },
-            minimum: table.limits.initial,
-            maximum: table.limits.maximum,
+            minimum: min,
+            maximum: max,
         })?;
     }
 

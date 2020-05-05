@@ -8,16 +8,20 @@ use crate::srcgen::Formatter;
 use crate::cdsl::recipes::{EncodingRecipe, OperandConstraint, Recipes};
 
 fn do_pre_inst_inserts(fmt: &mut Formatter) {
-    fmt.line("let pre_padding = func.pre_paddings[inst];");
-    fmt.line("let pre_padding_bytes = cranelift_spectre::padding::get_padding_bytes(pre_padding);");
-    fmt.line("pre_padding_bytes.iter().for_each(|b| sink.put1(*b));");
-
     fmt.line("if func.pre_lfence[inst] {");
     fmt.indent(|fmt| {
         fmt.line("let lfence_bytes = cranelift_spectre::inst::get_lfence();");
         fmt.line("lfence_bytes.iter().for_each(|b| sink.put1(*b));");
     });
     fmt.line("}");
+
+    fmt.line("let registers_to_truncate = &func.registers_to_truncate[inst];");
+    fmt.line("registers_to_truncate.iter().for_each(|r| {");
+    fmt.indent(|fmt| {
+        fmt.line("let truncate_bytes = cranelift_spectre::inst::get_reg_truncate_bytes(*r);");
+        fmt.line("truncate_bytes.iter().for_each(|b| sink.put1(*b));");
+    });
+    fmt.line("});");
 }
 
 fn do_post_inst_inserts(fmt: &mut Formatter) {
@@ -27,12 +31,16 @@ fn do_post_inst_inserts(fmt: &mut Formatter) {
         fmt.line("lfence_bytes.iter().for_each(|b| sink.put1(*b));");
     });
     fmt.line("}");
+}
 
-    fmt.line("let post_padding = func.post_paddings[inst];");
-    fmt.line(
-        "let post_padding_bytes = cranelift_spectre::padding::get_padding_bytes(post_padding);",
-    );
-    fmt.line("post_padding_bytes.iter().for_each(|b| sink.put1(*b));");
+fn do_inst_replacement(fmt: &mut Formatter) {
+    fmt.line("if func.replacement[inst].len() > 0 {");
+    fmt.indent(|fmt| {
+        fmt.line("func.replacement[inst].iter().for_each(|b| sink.put1(*b));");
+        do_post_inst_inserts(fmt);
+        fmt.line("return;");
+    });
+    fmt.line("}");
 }
 
 /// Generate code to handle a single recipe.
@@ -225,6 +233,7 @@ fn gen_isa(isa_name: &str, recipes: &Recipes, fmt: &mut Formatter) {
                 fmt.comment(format!("Recipe {}", recipe.name));
                 fmtln!(fmt, "{} => {{", i.index());
                 fmt.indent(|fmt| {
+                    do_inst_replacement(fmt);
                     gen_recipe(recipe, fmt);
                 });
                 fmt.line("}");

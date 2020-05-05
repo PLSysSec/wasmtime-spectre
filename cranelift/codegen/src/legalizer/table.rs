@@ -78,12 +78,24 @@ fn compute_addr(
     element_offset: Offset32,
     func: &mut ir::Function,
 ) {
+    let min_table_size: u64 = func.tables[table].min_size.into();
+
     let mut pos = FuncCursor::new(func).at_inst(inst);
     pos.use_srcloc(inst);
 
     // Convert `index` to `addr_ty`.
     if index_ty != addr_ty {
         index = pos.ins().uextend(addr_ty, index);
+    }
+
+    let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
+
+    if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
+        if !min_table_size.is_power_of_two() {
+            // SFI scheme guarantees through changes elsewhere that callback tables are always powers of 2
+            panic!("Spectre SFI scheme failure. Expected power of 2 for callback table");
+        }
+        index = pos.ins().band_imm(index, (min_table_size - 1) as i64);
     }
 
     // Add the table base address base

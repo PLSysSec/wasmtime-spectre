@@ -19,6 +19,7 @@ use crate::value_label::ValueLabelsRanges;
 use crate::write::write_function;
 use alloc::vec::Vec;
 use core::fmt;
+use std::vec::Vec;
 
 /// A function.
 ///
@@ -61,17 +62,18 @@ pub struct Function {
     /// Illegal instructions have the `Encoding::default()` value.
     pub encodings: InstEncodings,
 
-    /// Used for spectre resistance. Paddings for each instruction. 0 if not needed.
-    pub pre_paddings: SecondaryMap<Inst, u32>,
-
-    /// Used for spectre resistance. Paddings after each instruction. 0 if not needed.
-    pub post_paddings: SecondaryMap<Inst, u32>,
-
     /// Used for spectre resistance. Whether to use lfence after the instruction.
     pub pre_lfence: SecondaryMap<Inst, bool>,
 
     /// Used for spectre resistance. Whether to use lfence after the instruction.
     pub post_lfence: SecondaryMap<Inst, bool>,
+
+    /// Used for spectre resistance. Whether to replace this instruction.
+    /// If vec length is > 0, instruction is replaced with bytes in vec.
+    pub replacement: SecondaryMap<Inst, Vec<u8>>,
+
+    /// Used for spectre resistance. Set of registers to truncate to 32-bits before using the instruction.
+    pub registers_to_truncate: SecondaryMap<Inst, Vec<u16>>,
 
     /// Location assigned to every value.
     pub locations: ValueLocations,
@@ -131,10 +133,10 @@ impl Function {
             dfg: DataFlowGraph::new(),
             layout: Layout::new(),
             encodings: SecondaryMap::new(),
-            pre_paddings: SecondaryMap::new(),
-            post_paddings: SecondaryMap::new(),
             pre_lfence: SecondaryMap::new(),
             post_lfence: SecondaryMap::new(),
+            replacement: SecondaryMap::new(),
+            registers_to_truncate: SecondaryMap::new(),
             locations: SecondaryMap::new(),
             entry_diversions: EntryRegDiversions::new(),
             offsets: SecondaryMap::new(),
@@ -157,6 +159,10 @@ impl Function {
         self.dfg.clear();
         self.layout.clear();
         self.encodings.clear();
+        self.pre_lfence.clear();
+        self.post_lfence.clear();
+        self.replacement.clear();
+        self.registers_to_truncate.clear();
         self.locations.clear();
         self.entry_diversions.clear();
         self.offsets.clear();

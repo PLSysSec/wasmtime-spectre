@@ -394,7 +394,13 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
                 }
             };
             let val = state.pop1();
-            let mut data = JumpTableData::with_capacity(depths.len());
+
+            let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
+            let mut data = if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
+                JumpTableData::with_capacity(depths.len().next_power_of_two())
+            } else {
+                JumpTableData::with_capacity(depths.len())
+            };
             if jump_args_count == 0 {
                 // No jump arguments
                 for depth in &*depths {
@@ -405,6 +411,19 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
                         frame.br_destination()
                     };
                     data.push_entry(block);
+                }
+                if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
+                    // Duplicate the last entry in to the jump table until it is a power of 2
+                    for _i in depths.len()..depths.len().next_power_of_two() {
+                        let depth = depths[depths.len() - 1];
+                        let ebb = {
+                            let i = state.control_stack.len() - 1 - (depth as usize);
+                            let frame = &mut state.control_stack[i];
+                            frame.set_branched_to_exit();
+                            frame.br_destination()
+                        };
+                        data.push_entry(ebb);
+                    }
                 }
                 let jt = builder.create_jump_table(data);
                 let block = {

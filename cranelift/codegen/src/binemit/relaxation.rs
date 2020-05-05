@@ -32,13 +32,15 @@ use crate::cursor::{Cursor, FuncCursor};
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
 use crate::ir::{Block, Function, Inst, InstructionData, Opcode, Value, ValueList};
-use crate::isa::{EncInfo, TargetIsa};
+use crate::ir::{instructions::InstructionFormat, ValueLoc};
+use crate::isa::{registers::RegUnit, EncInfo, TargetIsa};
 use crate::iterators::IteratorExtras;
 use crate::regalloc::RegDiversions;
 use crate::timing;
 use crate::CodegenResult;
 use core::convert::TryFrom;
 use log::debug;
+use std::vec::Vec;
 
 #[cfg(feature = "basic-blocks")]
 use crate::ir::{Ebb, Inst, Value, ValueList};
@@ -50,7 +52,7 @@ fn spectre_resistance_on_basic_block(cur: &mut FuncCursor, first_inst: &Inst) {
     }
 }
 
-fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst) {
+fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst, divert: &RegDiversions) {
     let opcode = cur.func.dfg[*inst].opcode();
     let _format = opcode.format();
     let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
@@ -63,7 +65,79 @@ fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst) {
         if opcode.can_load() {
             cur.func.post_lfence[*inst] = true;
         }
+    } else if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
+        if opcode.is_return() && cur.func.replacement[*inst].len() == 0 {
+            let replacement = cranelift_spectre::inst::get_pop_jump_ret();
+            cur.func.replacement[*inst] = replacement.to_vec();
+        }
+
+        let heap_index_registers = get_pinned_base_heap_index_registers(cur, divert, inst);
+        cur.func.registers_to_truncate[*inst] = heap_index_registers;
     }
+}
+
+fn get_registers(cur: &FuncCursor, divert: &RegDiversions, values: &[Value]) -> Vec<RegUnit> {
+    let mut regs = vec![];
+    for value in values {
+        let v = divert.get(*value, &cur.func.locations);
+        match v {
+            ValueLoc::Reg(r) => regs.push(r),
+            _ => (),
+        };
+    }
+    regs
+}
+
+fn get_pinned_base_heap_index_registers(
+    cur: &FuncCursor,
+    divert: &RegDiversions,
+    inst: &Inst,
+) -> Vec<u16> {
+    let _rets = cur.func.dfg.inst_results(*inst);
+    let _out_regs = get_registers(&cur, &divert, _rets);
+
+    let opcode = cur.func.dfg[*inst].opcode();
+    let format = opcode.format();
+
+    let args = cur.func.dfg[*inst].arguments(&cur.func.dfg.value_lists);
+    let in_regs = get_registers(&cur, &divert, args);
+
+    let is_heap_op = |in_regs: &[RegUnit], format: &InstructionFormat| {
+        // any load store that uses the sandbox heap is a "heap op"
+        match format {
+            InstructionFormat::Load { .. } | InstructionFormat::LoadComplex { .. } => {
+                if in_regs.len() <= 1 {
+                    false
+                } else {
+                    let first_reg: u16 = in_regs[in_regs.len() - 2].into();
+                    first_reg == 15
+                }
+            }
+            InstructionFormat::Store { .. } | InstructionFormat::StoreComplex { .. } => {
+                if in_regs.len() <= 2 {
+                    false
+                } else {
+                    let first_reg: u16 = in_regs[in_regs.len() - 2].into();
+                    first_reg == 15
+                }
+            }
+            _ => false,
+        }
+    };
+    let get_heap_index_regs = |in_regs: &[RegUnit]| {
+        // for now, we just pick the last arg as all inst seems to have the format
+        // loaded_val = load(r_heapbase, r_index)
+        // store(stored_val, r_heapbase, r_index)
+        vec![in_regs.last().unwrap().clone()]
+    };
+
+    let regs = if is_heap_op(&in_regs, &format) {
+        get_heap_index_regs(&in_regs)
+    } else {
+        vec![]
+    };
+
+    return regs;
 }
 
 /// Relax branches and compute the final layout of block headers in `func`.
@@ -139,14 +213,18 @@ pub fn relax_branches(
                     spectre_resistance_on_basic_block(&mut cur, &inst);
                 }
 
-                spectre_resistance_on_inst(&mut cur, &inst);
+                spectre_resistance_on_inst(&mut cur, &inst, &divert);
 
-                let pre_insert_size = cur.func.pre_paddings[inst]
-                    + if cur.func.pre_lfence[inst] {
-                        cranelift_spectre::inst::get_lfence().len() as u32
-                    } else {
-                        0
-                    };
+                let reg_clear_bytes_size: usize = cur.func.registers_to_truncate[inst]
+                    .iter()
+                    .map(|&reg| cranelift_spectre::inst::get_reg_truncate_bytes(reg).len())
+                    .sum();
+
+                let pre_insert_size = if cur.func.pre_lfence[inst] {
+                    cranelift_spectre::inst::get_lfence().len() as u32
+                } else {
+                    0
+                } + (reg_clear_bytes_size as u32);
                 offset += pre_insert_size;
 
                 // See if this is a branch has a range and a destination, and if the target is in
@@ -163,12 +241,11 @@ pub fn relax_branches(
                 // get enc again as it may be updated in relax_branch
                 let enc = cur.func.encodings[inst];
                 let inst_size = encinfo.byte_size(enc, inst, &divert, &cur.func);
-                let post_insert_size = cur.func.post_paddings[inst]
-                    + if cur.func.post_lfence[inst] {
-                        cranelift_spectre::inst::get_lfence().len() as u32
-                    } else {
-                        0
-                    };
+                let post_insert_size = if cur.func.post_lfence[inst] {
+                    cranelift_spectre::inst::get_lfence().len() as u32
+                } else {
+                    0
+                };
                 offset += inst_size + post_insert_size;
                 first_inst_in_block = false;
             }
