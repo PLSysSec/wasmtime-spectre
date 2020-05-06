@@ -2,6 +2,10 @@ pub fn get_lfence() -> &'static [u8] {
     &[0x0f, 0xae, 0xe8]
 }
 
+pub fn get_endbranch() -> &'static [u8] {
+    &[0xf3, 0x0f, 0x1e, 0xfa]
+}
+
 //   41 5b                   pop    %r11
 //   41 ff e3                jmpq   *%r11
 pub fn get_pop_jump_ret() -> &'static [u8] {

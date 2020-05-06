@@ -8,6 +8,12 @@ use crate::srcgen::Formatter;
 use crate::cdsl::recipes::{EncodingRecipe, OperandConstraint, Recipes};
 
 fn do_pre_inst_inserts(fmt: &mut Formatter) {
+    fmt.line("if func.pre_endbranch[inst] {");
+    fmt.indent(|fmt| {
+        fmt.line("let endbranch_bytes = cranelift_spectre::inst::get_endbranch();");
+        fmt.line("endbranch_bytes.iter().for_each(|b| sink.put1(*b));");
+    });
+    fmt.line("}");
     fmt.line("if func.pre_lfence[inst] {");
     fmt.indent(|fmt| {
         fmt.line("let lfence_bytes = cranelift_spectre::inst::get_lfence();");

@@ -13,6 +13,7 @@ pub enum SpectreMitigation {
     LOADLFENCE,
     STRAWMAN,
     SFI,
+    CET,
 }
 
 pub fn use_spectre_mitigation_settings(spectre_mitigation: Option<SpectreMitigation>) {

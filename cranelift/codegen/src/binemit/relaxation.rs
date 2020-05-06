@@ -45,6 +45,19 @@ use std::vec::Vec;
 #[cfg(feature = "basic-blocks")]
 use crate::ir::{Ebb, Inst, Value, ValueList};
 
+fn spectre_resistance_on_func(
+    cur: &mut FuncCursor,
+    first_inst: &Inst,
+    can_be_indirectly_called: bool,
+) {
+    let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
+    if mitigation == cranelift_spectre::settings::SpectreMitigation::CET && can_be_indirectly_called
+    {
+        cur.func.pre_lfence[*first_inst] = true;
+        cur.func.pre_endbranch[*first_inst] = true;
+    }
+}
+
 fn spectre_resistance_on_basic_block(cur: &mut FuncCursor, first_inst: &Inst) {
     let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
     if mitigation == cranelift_spectre::settings::SpectreMitigation::STRAWMAN {
@@ -148,6 +161,7 @@ pub fn relax_branches(
     _cfg: &mut ControlFlowGraph,
     _domtree: &mut DominatorTree,
     isa: &dyn TargetIsa,
+    can_be_indirectly_called: bool,
 ) -> CodegenResult<CodeInfo> {
     let _tt = timing::relax_branches();
 
@@ -187,6 +201,7 @@ pub fn relax_branches(
         offset = 0;
 
         let mut _inst_num = 0;
+        let mut first_inst_in_func = true;
         let mut first_inst_in_block;
 
         // Visit all instructions in layout order.
@@ -209,6 +224,9 @@ pub fn relax_branches(
 
                 let enc = cur.func.encodings[inst];
 
+                if first_inst_in_func {
+                    spectre_resistance_on_func(&mut cur, &inst, can_be_indirectly_called);
+                }
                 if first_inst_in_block {
                     spectre_resistance_on_basic_block(&mut cur, &inst);
                 }
@@ -222,6 +240,10 @@ pub fn relax_branches(
 
                 let pre_insert_size = if cur.func.pre_lfence[inst] {
                     cranelift_spectre::inst::get_lfence().len() as u32
+                } else {
+                    0
+                } + if cur.func.pre_endbranch[inst] {
+                    cranelift_spectre::inst::get_endbranch().len() as u32
                 } else {
                     0
                 } + (reg_clear_bytes_size as u32);
@@ -248,6 +270,7 @@ pub fn relax_branches(
                 };
                 offset += inst_size + post_insert_size;
                 first_inst_in_block = false;
+                first_inst_in_func = false;
             }
         }
     }

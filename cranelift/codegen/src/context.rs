@@ -128,7 +128,7 @@ impl Context {
         traps: &mut dyn TrapSink,
         stackmaps: &mut dyn StackmapSink,
     ) -> CodegenResult<CodeInfo> {
-        let info = self.compile(isa)?;
+        let info = self.compile(isa, false)?;
         let old_len = mem.len();
         mem.resize(old_len + info.total_size as usize, 0);
         let new_info = unsafe {
@@ -145,7 +145,11 @@ impl Context {
     /// code sink.
     ///
     /// Returns information about the function's code and read-only data.
-    pub fn compile(&mut self, isa: &dyn TargetIsa) -> CodegenResult<CodeInfo> {
+    pub fn compile(
+        &mut self,
+        isa: &dyn TargetIsa,
+        can_be_indirectly_called: bool,
+    ) -> CodegenResult<CodeInfo> {
         let _tt = timing::compile();
         self.verify_if(isa)?;
 
@@ -193,7 +197,7 @@ impl Context {
             if opt_level == OptLevel::SpeedAndSize {
                 self.shrink_instructions(isa)?;
             }
-            let result = self.relax_branches(isa);
+            let result = self.relax_branches(isa, can_be_indirectly_called);
 
             debug!("Compiled:\n{}", self.func.display(isa));
             result
@@ -410,8 +414,18 @@ impl Context {
 
     /// Run the branch relaxation pass and return information about the function's code and
     /// read-only data.
-    pub fn relax_branches(&mut self, isa: &dyn TargetIsa) -> CodegenResult<CodeInfo> {
-        let info = relax_branches(&mut self.func, &mut self.cfg, &mut self.domtree, isa)?;
+    pub fn relax_branches(
+        &mut self,
+        isa: &dyn TargetIsa,
+        can_be_indirectly_called: bool,
+    ) -> CodegenResult<CodeInfo> {
+        let info = relax_branches(
+            &mut self.func,
+            &mut self.cfg,
+            &mut self.domtree,
+            isa,
+            can_be_indirectly_called,
+        )?;
         self.verify_if(isa)?;
         self.verify_locations_if(isa)?;
         Ok(info)

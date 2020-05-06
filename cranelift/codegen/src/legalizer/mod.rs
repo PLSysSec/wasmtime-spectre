@@ -415,6 +415,16 @@ fn expand_br_table_jt(
     pos.remove_inst();
     cfg.recompute_block(pos.func, block);
     cfg.recompute_block(pos.func, jump_table_block);
+
+    if mitigation == cranelift_spectre::settings::SpectreMitigation::CET {
+        let ebbs = pos.func.jump_tables[table].clone();
+        for ebb in ebbs.iter() {
+            pos.goto_first_inst(*ebb);
+            let inst = pos.current_inst().unwrap();
+            pos.func.pre_endbranch[inst] = true;
+            pos.func.pre_lfence[inst] = true;
+        }
+    }
 }
 
 /// Expand br_table to series of conditionals.
