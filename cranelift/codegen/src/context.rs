@@ -13,6 +13,7 @@ use crate::binemit::{
     relax_branches, shrink_instructions, CodeInfo, MemoryCodeSink, RelocSink, StackmapSink,
     TrapSink,
 };
+use crate::blade::do_blade;
 use crate::dce::do_dce;
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
@@ -36,6 +37,7 @@ use crate::unreachable_code::eliminate_unreachable_code;
 use crate::value_label::{build_value_labels_ranges, ComparableSourceLoc, ValueLabelsRanges};
 use crate::verifier::{verify_context, verify_locations, VerifierErrors, VerifierResult};
 use alloc::vec::Vec;
+use cranelift_spectre::settings::{get_spectre_mitigation, SpectreMitigation};
 use log::debug;
 
 /// Persistent data structures and compilation pipeline.
@@ -189,6 +191,9 @@ impl Context {
             self.mach_compile_result = Some(result);
             Ok(info)
         } else {
+            if get_spectre_mitigation() == SpectreMitigation::BLADE {
+                self.blade(isa)?;
+            }
             self.regalloc(isa)?;
             self.prologue_epilogue(isa)?;
             if opt_level == OptLevel::Speed || opt_level == OptLevel::SpeedAndSize {
@@ -429,6 +434,12 @@ impl Context {
         self.verify_if(isa)?;
         self.verify_locations_if(isa)?;
         Ok(info)
+    }
+
+    /// Perform the Blade pass to insert lfences in appropriate places.
+    pub fn blade(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
+        do_blade(&mut self.func, &self.cfg);
+        self.verify_if(isa)
     }
 
     /// Builds ranges and location for specified value labels.

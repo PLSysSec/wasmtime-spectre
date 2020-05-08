@@ -45,22 +45,23 @@ use std::vec::Vec;
 #[cfg(feature = "basic-blocks")]
 use crate::ir::{Ebb, Inst, Value, ValueList};
 
+use cranelift_spectre::settings::{get_spectre_mitigation, SpectreMitigation};
+
 fn spectre_resistance_on_func(
     cur: &mut FuncCursor,
     first_inst: &Inst,
     can_be_indirectly_called: bool,
 ) {
-    let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
-    if mitigation == cranelift_spectre::settings::SpectreMitigation::CET && can_be_indirectly_called
-    {
+    let mitigation = get_spectre_mitigation();
+    if mitigation == SpectreMitigation::CET && can_be_indirectly_called {
         cur.func.pre_lfence[*first_inst] = true;
         cur.func.pre_endbranch[*first_inst] = true;
     }
 }
 
 fn spectre_resistance_on_basic_block(cur: &mut FuncCursor, first_inst: &Inst) {
-    let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
-    if mitigation == cranelift_spectre::settings::SpectreMitigation::STRAWMAN {
+    let mitigation = get_spectre_mitigation();
+    if mitigation == SpectreMitigation::STRAWMAN {
         cur.func.pre_lfence[*first_inst] = true;
     }
 }
@@ -68,24 +69,29 @@ fn spectre_resistance_on_basic_block(cur: &mut FuncCursor, first_inst: &Inst) {
 fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst, divert: &RegDiversions) {
     let opcode = cur.func.dfg[*inst].opcode();
     let _format = opcode.format();
-    let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
+    let mitigation = get_spectre_mitigation();
 
-    if mitigation == cranelift_spectre::settings::SpectreMitigation::STRAWMAN {
-        if opcode == Opcode::Call || opcode == Opcode::CallIndirect {
-            cur.func.post_lfence[*inst] = true;
+    match mitigation {
+        SpectreMitigation::STRAWMAN => {
+            if opcode == Opcode::Call || opcode == Opcode::CallIndirect {
+                cur.func.post_lfence[*inst] = true;
+            }
         }
-    } else if mitigation == cranelift_spectre::settings::SpectreMitigation::LOADLFENCE {
-        if opcode.can_load() {
-            cur.func.post_lfence[*inst] = true;
+        SpectreMitigation::LOADLFENCE => {
+            if opcode.can_load() {
+                cur.func.post_lfence[*inst] = true;
+            }
         }
-    } else if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
-        if opcode.is_return() && cur.func.replacement[*inst].len() == 0 {
-            let replacement = cranelift_spectre::inst::get_pop_jump_ret();
-            cur.func.replacement[*inst] = replacement.to_vec();
-        }
+        SpectreMitigation::SFI => {
+            if opcode.is_return() && cur.func.replacement[*inst].len() == 0 {
+                let replacement = cranelift_spectre::inst::get_pop_jump_ret();
+                cur.func.replacement[*inst] = replacement.to_vec();
+            }
 
-        let heap_index_registers = get_pinned_base_heap_index_registers(cur, divert, inst);
-        cur.func.registers_to_truncate[*inst] = heap_index_registers;
+            let heap_index_registers = get_pinned_base_heap_index_registers(cur, divert, inst);
+            cur.func.registers_to_truncate[*inst] = heap_index_registers;
+        }
+        _ => {}
     }
 }
 

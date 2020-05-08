@@ -14,6 +14,7 @@ pub enum SpectreMitigation {
     STRAWMAN,
     SFI,
     CET,
+    BLADE,
 }
 
 pub fn use_spectre_mitigation_settings(spectre_mitigation: Option<SpectreMitigation>) {

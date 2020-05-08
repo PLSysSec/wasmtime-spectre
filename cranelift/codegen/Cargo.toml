@@ -30,6 +30,7 @@ regalloc = "0.0.17"
 # Please don't add any unless they are essential to the task of creating binary
 # machine code. Integration tests that need external dependencies can be
 # accomodated in `tests`.
+rs-graph = "0.19.1"
 
 [build-dependencies]
 cranelift-codegen-meta = { path = "meta", version = "0.62.0" }
