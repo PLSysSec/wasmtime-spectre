@@ -183,7 +183,7 @@ struct BladeGraph {
     /// maps graph nodes to the `Value`s which they correspond to
     node_to_val_map: HashMap<Node<usize>, Value>,
     /// maps `Value`s to the graph nodes which they correspond to
-    val_to_node_map: HashMap<Value, Node<usize>>,
+    _val_to_node_map: HashMap<Value, Node<usize>>,
 }
 
 impl BladeGraph {
@@ -303,6 +303,6 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
         source_node: source,
         sink_node: sink,
         node_to_val_map,
-        val_to_node_map,
+        _val_to_node_map: val_to_node_map,
     }
 }

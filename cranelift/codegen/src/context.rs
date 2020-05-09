@@ -37,7 +37,6 @@ use crate::unreachable_code::eliminate_unreachable_code;
 use crate::value_label::{build_value_labels_ranges, ComparableSourceLoc, ValueLabelsRanges};
 use crate::verifier::{verify_context, verify_locations, VerifierErrors, VerifierResult};
 use alloc::vec::Vec;
-use cranelift_spectre::settings::{get_spectre_mitigation, SpectreMitigation};
 use log::debug;
 
 /// Persistent data structures and compilation pipeline.
@@ -191,7 +190,9 @@ impl Context {
             self.mach_compile_result = Some(result);
             Ok(info)
         } else {
-            if get_spectre_mitigation() == SpectreMitigation::BLADE {
+            if cranelift_spectre::settings::get_spectre_pht_mitigation()
+                == cranelift_spectre::settings::SpectrePHTMitigation::BLADE
+            {
                 self.blade(isa)?;
             }
             self.regalloc(isa)?;
