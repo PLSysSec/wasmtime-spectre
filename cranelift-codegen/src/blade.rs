@@ -127,6 +127,7 @@ impl DefUseGraph {
                     | InstructionData::BranchInt { .. }
                     | InstructionData::Call { .. }
                     | InstructionData::CallIndirect { .. }
+                    | InstructionData::IndirectJump { .. }
                     | InstructionData::Jump { .. } => func.dfg.inst_variable_args(incoming_bb.inst),
                     _ => panic!(
                         "incoming_branch is an unexpected type: {:?}",
