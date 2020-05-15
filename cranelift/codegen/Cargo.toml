@@ -16,7 +16,7 @@ edition = "2018"
 cranelift-codegen-shared = { path = "./shared", version = "0.62.0" }
 cranelift-entity = { path = "../entity", version = "0.62.0" }
 cranelift-bforest = { path = "../bforest", version = "0.62.0" }
-cranelift-spectre = { path = "../cranelift-spectre", version = "0.1.0" }
+cranelift-spectre = { path = "../../cranelift-spectre", version = "0.1.0" }
 hashbrown = { version = "0.7", optional = true }
 target-lexicon = "0.10"
 log = { version = "0.4.6", default-features = false }

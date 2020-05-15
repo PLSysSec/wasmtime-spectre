@@ -19,7 +19,6 @@ use crate::value_label::ValueLabelsRanges;
 use crate::write::write_function;
 use alloc::vec::Vec;
 use core::fmt;
-use std::vec::Vec;
 
 /// A function.
 ///

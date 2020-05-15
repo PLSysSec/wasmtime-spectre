@@ -103,10 +103,10 @@ impl DefUseGraph {
         let mut map: SecondaryMap<Value, Vec<ValueUse>> =
             SecondaryMap::with_capacity(func.dfg.num_values());
 
-        for ebb in func.layout.ebbs() {
+        for ebb in func.layout.blocks() {
             // Iterate over every instruction. Mark that instruction as a use of
             // each of its parameters.
-            for inst in func.layout.ebb_insts(ebb) {
+            for inst in func.layout.block_insts(ebb) {
                 for arg in func.dfg.inst_args(inst) {
                     map[*arg].push(ValueUse::Inst(inst));
                 }
@@ -134,7 +134,7 @@ impl DefUseGraph {
                         incoming_branch
                     ),
                 };
-                let ebb_params = func.dfg.ebb_params(ebb);
+                let ebb_params = func.dfg.block_params(ebb);
                 assert_eq!(branch_args.len(), ebb_params.len());
                 for (param, arg) in ebb_params.iter().zip(branch_args.iter()) {
                     map[*arg].push(ValueUse::Value(*param));
@@ -226,8 +226,8 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
     // from this point on, we can assume that `val_to_node_map` is valid for all values
 
     // find sources and sinks, and add edges to/from our s and t nodes
-    for ebb in func.layout.ebbs() {
-        for insn in func.layout.ebb_insts(ebb) {
+    for ebb in func.layout.blocks() {
+        for insn in func.layout.block_insts(ebb) {
             let idata = &func.dfg[insn];
             let op = idata.opcode();
             // we may need to just match on op anyway
