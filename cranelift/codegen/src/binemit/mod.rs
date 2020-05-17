@@ -17,7 +17,7 @@ pub use self::shrink::shrink_instructions;
 pub use self::stackmap::Stackmap;
 use crate::ir::entities::Value;
 use crate::ir::{
-    ConstantOffset, ExternalName, Function, Inst, JumpTable, Opcode, SourceLoc, TrapCode,
+    Block, ConstantOffset, ExternalName, Function, Inst, JumpTable, Opcode, SourceLoc, TrapCode,
 };
 use crate::isa::TargetIsa;
 pub use crate::regalloc::RegDiversions;
@@ -190,14 +190,24 @@ pub fn bad_encoding(func: &Function, inst: Inst) -> ! {
 pub fn emit_function<CS, EI>(func: &Function, emit_inst: EI, sink: &mut CS, isa: &dyn TargetIsa)
 where
     CS: CodeSink,
-    EI: Fn(&Function, Inst, &mut RegDiversions, &mut CS, &dyn TargetIsa),
+    EI: Fn(&Function, Inst, &mut RegDiversions, &mut CS, &dyn TargetIsa, bool, Block),
 {
     let mut divert = RegDiversions::new();
     for block in func.layout.blocks() {
         divert.at_block(&func.entry_diversions, block);
         debug_assert_eq!(func.offsets[block], sink.offset());
+        let mut first_inst_in_block = true;
         for inst in func.layout.block_insts(block) {
-            emit_inst(func, inst, &mut divert, sink, isa);
+            emit_inst(
+                func,
+                inst,
+                &mut divert,
+                sink,
+                isa,
+                first_inst_in_block,
+                block,
+            );
+            first_inst_in_block = false;
         }
     }
 

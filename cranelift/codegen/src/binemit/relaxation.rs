@@ -31,8 +31,8 @@ use crate::binemit::{CodeInfo, CodeOffset};
 use crate::cursor::{Cursor, FuncCursor};
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
-use crate::ir::{Block, Function, Inst, InstructionData, Opcode, Value, ValueList};
 use crate::ir::{instructions::InstructionFormat, ValueLoc};
+use crate::ir::{Block, Function, Inst, InstructionData, Opcode, Value, ValueList};
 use crate::isa::{registers::RegUnit, EncInfo, TargetIsa};
 use crate::iterators::IteratorExtras;
 use crate::regalloc::RegDiversions;
@@ -252,7 +252,21 @@ pub fn relax_branches(
                     cranelift_spectre::inst::get_endbranch().len() as u32
                 } else {
                     0
-                } + (reg_clear_bytes_size as u32);
+                } + (reg_clear_bytes_size as u32)
+                    + if first_inst_in_block {
+                        let block_inserts = if cur.func.block_lfence[block] {
+                            cranelift_spectre::inst::get_lfence().len() as u32
+                        } else {
+                            0
+                        } + if cur.func.block_endbranch[block] {
+                            cranelift_spectre::inst::get_endbranch().len() as u32
+                        } else {
+                            0
+                        };
+                        block_inserts
+                    } else {
+                        0
+                    };
                 offset += pre_insert_size;
 
                 // See if this is a branch has a range and a destination, and if the target is in

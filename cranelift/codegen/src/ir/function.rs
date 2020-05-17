@@ -67,8 +67,14 @@ pub struct Function {
     /// Used for spectre resistance. Whether to use lfence after the instruction.
     pub post_lfence: SecondaryMap<Inst, bool>,
 
+    /// Used for spectre resistance. Whether to use lfence at the start of the block.
+    pub block_lfence: SecondaryMap<Block, bool>,
+
     /// Used for spectre resistance. Whether to use endbranch before the instruction.
     pub pre_endbranch: SecondaryMap<Inst, bool>,
+
+    /// Used for spectre resistance. Whether to use endbranch at the start of the block.
+    pub block_endbranch: SecondaryMap<Block, bool>,
 
     /// Used for spectre resistance. Whether to replace this instruction.
     /// If vec length is > 0, instruction is replaced with bytes in vec.
@@ -137,7 +143,9 @@ impl Function {
             encodings: SecondaryMap::new(),
             pre_lfence: SecondaryMap::new(),
             post_lfence: SecondaryMap::new(),
+            block_lfence: SecondaryMap::new(),
             pre_endbranch: SecondaryMap::new(),
+            block_endbranch: SecondaryMap::new(),
             replacement: SecondaryMap::new(),
             registers_to_truncate: SecondaryMap::new(),
             locations: SecondaryMap::new(),
@@ -164,7 +172,9 @@ impl Function {
         self.encodings.clear();
         self.pre_lfence.clear();
         self.post_lfence.clear();
+        self.block_lfence.clear();
         self.pre_endbranch.clear();
+        self.block_endbranch.clear();
         self.replacement.clear();
         self.registers_to_truncate.clear();
         self.locations.clear();

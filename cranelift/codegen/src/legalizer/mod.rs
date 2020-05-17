@@ -419,10 +419,8 @@ fn expand_br_table_jt(
     if mitigation == cranelift_spectre::settings::SpectreMitigation::CET {
         let ebbs = pos.func.jump_tables[table].clone();
         for ebb in ebbs.iter() {
-            pos.goto_first_inst(*ebb);
-            let inst = pos.current_inst().unwrap();
-            pos.func.pre_endbranch[inst] = true;
-            pos.func.pre_lfence[inst] = true;
+            pos.func.block_endbranch[*ebb] = true;
+            pos.func.block_lfence[*ebb] = true;
         }
     }
 }

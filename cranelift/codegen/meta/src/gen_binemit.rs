@@ -7,6 +7,21 @@ use crate::srcgen::Formatter;
 
 use crate::cdsl::recipes::{EncodingRecipe, OperandConstraint, Recipes};
 
+fn do_block_inserts(fmt: &mut Formatter) {
+    fmt.line("if func.block_endbranch[block] {");
+    fmt.indent(|fmt| {
+        fmt.line("let endbranch_bytes = cranelift_spectre::inst::get_endbranch();");
+        fmt.line("endbranch_bytes.iter().for_each(|b| sink.put1(*b));");
+    });
+    fmt.line("}");
+    fmt.line("if func.block_lfence[block] {");
+    fmt.indent(|fmt| {
+        fmt.line("let lfence_bytes = cranelift_spectre::inst::get_lfence();");
+        fmt.line("lfence_bytes.iter().for_each(|b| sink.put1(*b));");
+    });
+    fmt.line("}");
+}
+
 fn do_pre_inst_inserts(fmt: &mut Formatter) {
     fmt.line("if func.pre_endbranch[inst] {");
     fmt.indent(|fmt| {
@@ -205,6 +220,8 @@ fn gen_isa(isa_name: &str, recipes: &Recipes, fmt: &mut Formatter) {
             fmt.line("_divert: &mut RegDiversions,");
             fmt.line("_sink: &mut CS,");
             fmt.line("_isa: &dyn TargetIsa,");
+            fmt.line("first_inst_in_block: bool,");
+            fmt.line("block: Block,")
         });
         fmt.line(") {");
         fmt.indent(|fmt| {
@@ -222,7 +239,9 @@ fn gen_isa(isa_name: &str, recipes: &Recipes, fmt: &mut Formatter) {
         fmt.line("inst: Inst,");
         fmt.line("divert: &mut RegDiversions,");
         fmt.line("sink: &mut CS,");
-        fmt.line("isa: &dyn TargetIsa,")
+        fmt.line("isa: &dyn TargetIsa,");
+        fmt.line("first_inst_in_block: bool,");
+        fmt.line("block: Block,")
     });
 
     fmt.line(") {");
@@ -230,6 +249,12 @@ fn gen_isa(isa_name: &str, recipes: &Recipes, fmt: &mut Formatter) {
         fmt.line("let encoding = func.encodings[inst];");
         fmt.line("let bits = encoding.bits();");
         fmt.line("let inst_data = &func.dfg[inst];");
+
+        fmt.line("if first_inst_in_block {");
+        fmt.indent(|fmt| {
+            do_block_inserts(fmt);
+        });
+        fmt.line("}");
 
         do_pre_inst_inserts(fmt);
 
