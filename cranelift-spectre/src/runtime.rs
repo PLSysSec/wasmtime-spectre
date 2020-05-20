@@ -1,6 +1,15 @@
 use crate::settings::*;
 
 #[inline(always)]
+unsafe fn change_affinity(cpuset: &libc::cpu_set_t) {
+    let thread = libc::pthread_self();
+    let s = libc::pthread_setaffinity_np(thread, libc::CPU_SETSIZE as libc::size_t, cpuset as *const libc::cpu_set_t);
+    if s != 0 {
+        panic!("Pthread affinity setting failed");
+    }
+}
+
+#[inline(always)]
 pub fn perform_transition_protection_in() {
     unsafe {
         llvm_asm!("lfence"
@@ -20,7 +29,12 @@ pub fn perform_transition_protection_in() {
             || mitigation == SpectreMitigation::SFI
             || mitigation == SpectreMitigation::CET
         {
-            // core switch to sandbox
+            if !get_spectre_disable_core_switching() {
+                unsafe {
+                    let cpuset = crate::settings::SANDBOX_CPUS.unwrap();
+                    change_affinity(&cpuset);
+                }
+            }
             if mitigation == SpectreMitigation::SFI {
                 //BTB flush
             }
@@ -46,6 +60,11 @@ pub fn perform_transition_protection_out() {
         || mitigation == SpectreMitigation::SFI
         || mitigation == SpectreMitigation::CET
     {
-        // core switch to app
+        if !get_spectre_disable_core_switching() {
+            unsafe {
+                let cpuset = crate::settings::APPLICATION_CPUS.unwrap();
+                change_affinity(&cpuset);
+            }
+        }
     }
 }
