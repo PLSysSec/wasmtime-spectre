@@ -1,3 +1,5 @@
+use num_derive::FromPrimitive;
+
 #[derive(Clone)]
 struct SpectreSettings {
     spectre_mitigation: SpectreMitigation,
@@ -9,7 +11,7 @@ static mut SPECTRE_SETTINGS: SpectreSettings = SpectreSettings {
     spectre_pht_mitigation: SpectrePHTMitigation::NONE,
 };
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Copy, FromPrimitive)]
 pub enum SpectreMitigation {
     NONE,
     LOADLFENCE,
@@ -18,7 +20,7 @@ pub enum SpectreMitigation {
     CET,
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Copy, FromPrimitive)]
 pub enum SpectrePHTMitigation {
     NONE,
     BLADE,

@@ -25,19 +25,31 @@ pub fn do_blade(func: &mut Function, cfg: &ControlFlowGraph) {
             // source -> n : fence after n
             insert_fence_after(
                 func,
-                blade_graph.node_to_bladenode_map.get(&edge_snk).unwrap().clone(),
+                blade_graph
+                    .node_to_bladenode_map
+                    .get(&edge_snk)
+                    .unwrap()
+                    .clone(),
             );
         } else if edge_snk == blade_graph.sink_node {
             // n -> sink : fence before (def of) n
             insert_fence_before(
                 func,
-                blade_graph.node_to_bladenode_map.get(&edge_src).unwrap().clone(),
+                blade_graph
+                    .node_to_bladenode_map
+                    .get(&edge_src)
+                    .unwrap()
+                    .clone(),
             );
         } else {
             // n -> m : fence before m
             insert_fence_before(
                 func,
-                blade_graph.node_to_bladenode_map.get(&edge_snk).unwrap().clone(),
+                blade_graph
+                    .node_to_bladenode_map
+                    .get(&edge_snk)
+                    .unwrap()
+                    .clone(),
             );
         }
     }
@@ -59,7 +71,7 @@ fn insert_fence_before(func: &mut Function, bnode: BladeNode) {
                     .expect("ebb has no instructions");
                 func.pre_lfence[first_inst] = true;
             }
-        }
+        },
         BladeNode::Sink(inst) => {
             // cut at this instruction by putting lfence before it
             func.pre_lfence[inst] = true;
@@ -83,7 +95,7 @@ fn insert_fence_after(func: &mut Function, bnode: BladeNode) {
                     .expect("ebb has no instructions");
                 func.pre_lfence[first_inst] = true;
             }
-        }
+        },
         BladeNode::Sink(_) => panic!("Fencing after a sink instruction"),
     }
 }
