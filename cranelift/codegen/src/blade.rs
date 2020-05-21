@@ -57,7 +57,7 @@ pub fn do_blade(func: &mut Function, cfg: &ControlFlowGraph) {
 
 fn insert_fence_before(func: &mut Function, bnode: BladeNode) {
     match bnode {
-        BladeNode::Value(val) => match func.dfg.value_def(val) {
+        BladeNode::ValueDef(val) => match func.dfg.value_def(val) {
             ValueDef::Result(inst, _) => {
                 // cut at this value by putting lfence before `inst`
                 func.pre_lfence[inst] = true;
@@ -81,7 +81,7 @@ fn insert_fence_before(func: &mut Function, bnode: BladeNode) {
 
 fn insert_fence_after(func: &mut Function, bnode: BladeNode) {
     match bnode {
-        BladeNode::Value(val) => match func.dfg.value_def(val) {
+        BladeNode::ValueDef(val) => match func.dfg.value_def(val) {
             ValueDef::Result(inst, _) => {
                 // cut at this value by putting lfence after `inst`
                 func.post_lfence[inst] = true;
@@ -210,8 +210,8 @@ struct BladeGraph {
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
 enum BladeNode {
-    /// A `BladeNode` representing (the definition of) a value
-    Value(Value),
+    /// A `BladeNode` representing the definition of a value
+    ValueDef(Value),
     /// A `BladeNode` representing an instruction that serves as a sink
     Sink(Inst),
 }
@@ -249,8 +249,8 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
     // first we add nodes for all possible values, and populate our maps accordingly
     for val in func.dfg.values() {
         let node = gg.add_node();
-        node_to_bladenode_map.insert(node, BladeNode::Value(val));
-        bladenode_to_node_map.insert(BladeNode::Value(val), node);
+        node_to_bladenode_map.insert(node, BladeNode::ValueDef(val));
+        bladenode_to_node_map.insert(BladeNode::ValueDef(val), node);
     }
     // from this point on, we can assume that `bladenode_to_node_map` is valid for all Values
 
@@ -265,7 +265,7 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
 
                 // handle load as a source
                 let loaded_val = func.dfg.first_result(insn); // assume that there is only one result
-                let loaded_val_node = bladenode_to_node_map[&BladeNode::Value(loaded_val)];
+                let loaded_val_node = bladenode_to_node_map[&BladeNode::ValueDef(loaded_val)];
                 gg.add_edge(source, loaded_val_node);
 
                 // handle load as a sink, except for fills
@@ -277,7 +277,7 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
                     // add edge address_component_variable_node -> sink
                     // XXX X86Pop has an implicit dependency on %rsp which is not captured here
                     for arg_val in func.dfg.inst_args(insn) {
-                        let arg_node = bladenode_to_node_map[&BladeNode::Value(*arg_val)];
+                        let arg_node = bladenode_to_node_map[&BladeNode::ValueDef(*arg_val)];
                         gg.add_edge(arg_node, inst_sink_node);
                     }
                     gg.add_edge(inst_sink_node, sink);
@@ -295,7 +295,7 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
                 //   and everything after is address args
                 // XXX X86Push has an implicit dependency on %rsp which is not captured here
                 for arg_val in func.dfg.inst_args(insn).iter().skip(1) {
-                    let arg_node = bladenode_to_node_map[&BladeNode::Value(*arg_val)];
+                    let arg_node = bladenode_to_node_map[&BladeNode::ValueDef(*arg_val)];
                     gg.add_edge(arg_node, inst_sink_node);
                 }
                 gg.add_edge(inst_sink_node, sink);
@@ -310,7 +310,7 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
                 // `inst_fixed_args` gets the condition args for branches,
                 //   and ignores destination the ebb params (which are also included in args)
                 for value in func.dfg.inst_fixed_args(insn) {
-                    let value_node = bladenode_to_node_map[&BladeNode::Value(*value)];
+                    let value_node = bladenode_to_node_map[&BladeNode::ValueDef(*value)];
                     gg.add_edge(value_node, inst_sink_node);
                 }
                 gg.add_edge(inst_sink_node, sink);
@@ -319,7 +319,7 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
             if op.is_call() {
                 // call instruction: must assume that the return value could be a source
                 for result in func.dfg.inst_results(insn) {
-                    let result_node = bladenode_to_node_map[&BladeNode::Value(*result)];
+                    let result_node = bladenode_to_node_map[&BladeNode::ValueDef(*result)];
                     gg.add_edge(source, result_node);
                 }
             }
@@ -330,7 +330,7 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
     let entry_block = func.layout.entry_block().expect("Failed to find entry block");
     for func_param in func.dfg.block_params(entry_block) {
         // parameters of the entry block == parameters of the function
-        let param_node = bladenode_to_node_map[&BladeNode::Value(*func_param)];
+        let param_node = bladenode_to_node_map[&BladeNode::ValueDef(*func_param)];
         gg.add_edge(source, param_node);
     }
 
@@ -342,7 +342,7 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
     // we have z -> sink and source -> x, but need x -> z yet
     let def_use_graph = DefUseGraph::for_function(func, cfg);
     for val in func.dfg.values() {
-        let node = bladenode_to_node_map[&BladeNode::Value(val)]; // must exist
+        let node = bladenode_to_node_map[&BladeNode::ValueDef(val)]; // must exist
         for val_use in def_use_graph.uses_of_val(val) {
             match *val_use {
                 ValueUse::Inst(inst_use) => {
@@ -350,13 +350,13 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
                     // TODO this assumes that all results depend on all operands;
                     // are there any instructions where this is not the case for our purposes?
                     for result in func.dfg.inst_results(inst_use) {
-                        let result_node = bladenode_to_node_map[&BladeNode::Value(*result)]; // must exist
+                        let result_node = bladenode_to_node_map[&BladeNode::ValueDef(*result)]; // must exist
                         gg.add_edge(node, result_node);
                     }
                 }
                 ValueUse::Value(val_use) => {
                     // add an edge from val to val_use
-                    let val_use_node = bladenode_to_node_map[&BladeNode::Value(val_use)]; // must exist
+                    let val_use_node = bladenode_to_node_map[&BladeNode::ValueDef(val_use)]; // must exist
                     gg.add_edge(node, val_use_node);
                 }
             }
