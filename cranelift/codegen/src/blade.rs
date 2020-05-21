@@ -2,7 +2,7 @@
 
 use crate::entity::{EntityRef, SecondaryMap};
 use crate::flowgraph::ControlFlowGraph;
-use crate::ir::{Function, Inst, InstructionData, Value, ValueDef};
+use crate::ir::{Function, Inst, InstructionData, Value, ValueDef, Opcode};
 use rs_graph::linkedlistgraph::{Edge, LinkedListGraph, Node};
 use rs_graph::maxflow::pushrelabel::PushRelabel;
 use rs_graph::maxflow::MaxFlow;
@@ -261,24 +261,27 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
             let op = idata.opcode();
             if op.can_load() {
                 // loads are both sources (their loaded values) and sinks (their addresses)
+                // except for fills, which don't have sinks
 
                 // handle load as a source
                 let loaded_val = func.dfg.first_result(insn); // assume that there is only one result
                 let loaded_val_node = bladenode_to_node_map[&BladeNode::Value(loaded_val)];
                 gg.add_edge(source, loaded_val_node);
 
-                // handle load as a sink
-                let inst_sink_node = gg.add_node();
-                node_to_bladenode_map.insert(inst_sink_node, BladeNode::Sink(insn));
-                bladenode_to_node_map.insert(BladeNode::Sink(insn), inst_sink_node);
-                // for each address component variable of insn,
-                // add edge address_component_variable_node -> sink
-                // XXX X86Pop has an implicit dependency on %rsp which is not captured here
-                for arg_val in func.dfg.inst_args(insn) {
-                    let arg_node = bladenode_to_node_map[&BladeNode::Value(*arg_val)];
-                    gg.add_edge(arg_node, inst_sink_node);
+                // handle load as a sink, except for fills
+                if !(op == Opcode::Fill || op == Opcode::FillNop) {
+                    let inst_sink_node = gg.add_node();
+                    node_to_bladenode_map.insert(inst_sink_node, BladeNode::Sink(insn));
+                    bladenode_to_node_map.insert(BladeNode::Sink(insn), inst_sink_node);
+                    // for each address component variable of insn,
+                    // add edge address_component_variable_node -> sink
+                    // XXX X86Pop has an implicit dependency on %rsp which is not captured here
+                    for arg_val in func.dfg.inst_args(insn) {
+                        let arg_node = bladenode_to_node_map[&BladeNode::Value(*arg_val)];
+                        gg.add_edge(arg_node, inst_sink_node);
+                    }
+                    gg.add_edge(inst_sink_node, sink);
                 }
-                gg.add_edge(inst_sink_node, sink);
 
             } else if op.can_store() {
                 // loads are both sources and sinks, but stores are just sinks
