@@ -218,7 +218,7 @@ enum BladeNode {
 
 impl BladeGraph {
     /// Return the cut-edges in the mincut of the graph
-    fn min_cut<'a>(&'a self) -> Vec<Edge<usize>> {
+    fn min_cut(&self) -> Vec<Edge<usize>> {
         // TODO: our options are `Dinic`, `EdmondsKarp`, or `PushRelabel`.
         // I'm not sure what the tradeoffs are.
         // SC: from my limited wikipedia'ing, pushrelabel is supposedly the best
@@ -252,61 +252,66 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
         node_to_bladenode_map.insert(node, BladeNode::Value(val));
         bladenode_to_node_map.insert(BladeNode::Value(val), node);
     }
-    // from this point on, we can assume that `val_to_node_map` is valid for all values
+    // from this point on, we can assume that `bladenode_to_node_map` is valid for all Values
 
-    // find sources and sinks, and add edges to/from our s and t nodes
+    // find sources and sinks, and add edges to/from our global source and sink nodes
     for ebb in func.layout.blocks() {
         for insn in func.layout.block_insts(ebb) {
             let idata = &func.dfg[insn];
             let op = idata.opcode();
-            // we may need to just match on op anyway
             if op.can_load() {
+                // loads are both sources (their loaded values) and sinks (their addresses)
+
+                // handle load as a source
                 let loaded_val = func.dfg.first_result(insn); // assume that there is only one result
                 let loaded_val_node = bladenode_to_node_map[&BladeNode::Value(loaded_val)];
                 gg.add_edge(source, loaded_val_node);
-                // for each address component variable of insn (should already
-                // exist in graph), add edge address_component_variable_node ->
-                // sink
-                // XXX X86Pop has an implicit dependency on %rsp which is not captured here
+
+                // handle load as a sink
                 let inst_sink_node = gg.add_node();
                 node_to_bladenode_map.insert(inst_sink_node, BladeNode::Sink(insn));
                 bladenode_to_node_map.insert(BladeNode::Sink(insn), inst_sink_node);
+                // for each address component variable of insn,
+                // add edge address_component_variable_node -> sink
+                // XXX X86Pop has an implicit dependency on %rsp which is not captured here
                 for arg_val in func.dfg.inst_args(insn) {
                     let arg_node = bladenode_to_node_map[&BladeNode::Value(*arg_val)];
                     gg.add_edge(arg_node, inst_sink_node);
                 }
                 gg.add_edge(inst_sink_node, sink);
+
             } else if op.can_store() {
-                // ??? blade doesn't actually have rules for this; treat like a load?
-                // CD: stores are only sinks (specifically their address components),
-                // not sources
+                // loads are both sources and sinks, but stores are just sinks
+
+                let inst_sink_node = gg.add_node();
+                node_to_bladenode_map.insert(inst_sink_node, BladeNode::Sink(insn));
+                bladenode_to_node_map.insert(BladeNode::Sink(insn), inst_sink_node);
                 // similar to for loop above, but should skip the value being stored
                 // SC: as far as I can tell, all stores (that have arguments) always
                 //   have the value being stored as the first argument
                 //   and everything after is address args
                 // XXX X86Push has an implicit dependency on %rsp which is not captured here
-                let inst_sink_node = gg.add_node();
-                node_to_bladenode_map.insert(inst_sink_node, BladeNode::Sink(insn));
-                bladenode_to_node_map.insert(BladeNode::Sink(insn), inst_sink_node);
                 for arg_val in func.dfg.inst_args(insn).iter().skip(1) {
                     let arg_node = bladenode_to_node_map[&BladeNode::Value(*arg_val)];
                     gg.add_edge(arg_node, inst_sink_node);
                 }
                 gg.add_edge(inst_sink_node, sink);
+
             } else if op.is_branch() {
-                // add edge condition_variable_node -> sink
-                // and I think that's all we need to do here
-                // blade only does conditional branches but this will handle indirect jumps as well
-                // `inst_fixed_args` gets the condition args for branches,
-                //   and ignores destination the ebb params (which are also included in args)
+                // conditional branches are snks
+
                 let inst_sink_node = gg.add_node();
                 node_to_bladenode_map.insert(inst_sink_node, BladeNode::Sink(insn));
                 bladenode_to_node_map.insert(BladeNode::Sink(insn), inst_sink_node);
+                // blade only does conditional branches but this will handle indirect jumps as well
+                // `inst_fixed_args` gets the condition args for branches,
+                //   and ignores destination the ebb params (which are also included in args)
                 for value in func.dfg.inst_fixed_args(insn) {
                     let value_node = bladenode_to_node_map[&BladeNode::Value(*value)];
                     gg.add_edge(value_node, inst_sink_node);
                 }
                 gg.add_edge(inst_sink_node, sink);
+
             }
         }
     }
