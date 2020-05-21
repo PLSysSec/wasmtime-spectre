@@ -316,7 +316,7 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
                 gg.add_edge(inst_sink_node, sink);
 
             }
-            if let Some(_) = func.dfg.call_signature(insn) {
+            if op.is_call() {
                 // call instruction: must assume that the return value could be a source
                 for result in func.dfg.inst_results(insn) {
                     let result_node = bladenode_to_node_map[&BladeNode::Value(*result)];
