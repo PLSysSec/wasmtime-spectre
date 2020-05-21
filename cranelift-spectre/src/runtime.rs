@@ -1,12 +1,17 @@
 use crate::settings::*;
 
+extern "C" {
+    pub fn pthread_yield();
+}
+
 #[inline(always)]
-unsafe fn change_affinity(cpuset: &libc::cpu_set_t) {
+unsafe fn change_cores(cpuset: &libc::cpu_set_t) {
     let thread = libc::pthread_self();
     let s = libc::pthread_setaffinity_np(thread, libc::CPU_SETSIZE as libc::size_t, cpuset as *const libc::cpu_set_t);
     if s != 0 {
         panic!("Pthread affinity setting failed");
     }
+    pthread_yield();
 }
 
 #[inline(always)]
@@ -32,7 +37,7 @@ pub fn perform_transition_protection_in() {
             if !get_spectre_disable_core_switching() {
                 unsafe {
                     let cpuset = crate::settings::SANDBOX_CPUS.unwrap();
-                    change_affinity(&cpuset);
+                    change_cores(&cpuset);
                 }
             }
             if mitigation == SpectreMitigation::SFI && !get_spectre_disable_btbflush() {
@@ -68,7 +73,7 @@ pub fn perform_transition_protection_out() {
         if !get_spectre_disable_core_switching() {
             unsafe {
                 let cpuset = crate::settings::APPLICATION_CPUS.unwrap();
-                change_affinity(&cpuset);
+                change_cores(&cpuset);
             }
         }
     }
