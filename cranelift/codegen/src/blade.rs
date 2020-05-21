@@ -298,7 +298,7 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
                 gg.add_edge(inst_sink_node, sink);
 
             } else if op.is_branch() {
-                // conditional branches are snks
+                // conditional branches are sinks
 
                 let inst_sink_node = gg.add_node();
                 node_to_bladenode_map.insert(inst_sink_node, BladeNode::Sink(insn));
@@ -313,7 +313,22 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
                 gg.add_edge(inst_sink_node, sink);
 
             }
+            if let Some(_) = func.dfg.call_signature(insn) {
+                // call instruction: must assume that the return value could be a source
+                for result in func.dfg.inst_results(insn) {
+                    let result_node = bladenode_to_node_map[&BladeNode::Value(*result)];
+                    gg.add_edge(source, result_node);
+                }
+            }
         }
+    }
+
+    // add edges to mark function parameters as potentially transient
+    let entry_block = func.layout.entry_block().expect("Failed to find entry block");
+    for func_param in func.dfg.block_params(entry_block) {
+        // parameters of the entry block == parameters of the function
+        let param_node = bladenode_to_node_map[&BladeNode::Value(*func_param)];
+        gg.add_edge(source, param_node);
     }
 
     // now add edges for actual data dependencies
