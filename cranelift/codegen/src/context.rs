@@ -37,6 +37,7 @@ use crate::unreachable_code::eliminate_unreachable_code;
 use crate::value_label::{build_value_labels_ranges, ComparableSourceLoc, ValueLabelsRanges};
 use crate::verifier::{verify_context, verify_locations, VerifierErrors, VerifierResult};
 use alloc::vec::Vec;
+use cranelift_spectre::settings::{get_spectre_pht_mitigation, SpectrePHTMitigation};
 use log::debug;
 
 /// Persistent data structures and compilation pipeline.
@@ -190,9 +191,15 @@ impl Context {
             self.mach_compile_result = Some(result);
             Ok(info)
         } else {
-            if cranelift_spectre::settings::get_spectre_pht_mitigation()
-                == cranelift_spectre::settings::SpectrePHTMitigation::BLADE
-            {
+            if get_spectre_pht_mitigation() == SpectrePHTMitigation::BLADE {
+                // We do this before regalloc.
+                // It's safe because blade doesn't need to consider register unspills as dangerous
+                // loads.
+                // Register unspills can't have their address controlled by the attacker, so they
+                // can't directly produce dangerous transient data;
+                // and if transient data was stored there by a previous speculative register spill,
+                // then even the pre-regalloc blade pass will see the def-use chain across the
+                // spill-unspill and insert a fence somewhere in the chain.
                 self.blade(isa)?;
             }
             self.regalloc(isa)?;
