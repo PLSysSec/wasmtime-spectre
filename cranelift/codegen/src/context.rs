@@ -190,6 +190,11 @@ impl Context {
             self.mach_compile_result = Some(result);
             Ok(info)
         } else {
+            if cranelift_spectre::settings::get_spectre_pht_mitigation()
+                == cranelift_spectre::settings::SpectrePHTMitigation::BLADE
+            {
+                self.blade(isa)?;
+            }
             self.regalloc(isa)?;
             self.prologue_epilogue(isa)?;
             if opt_level == OptLevel::Speed || opt_level == OptLevel::SpeedAndSize {
@@ -197,11 +202,6 @@ impl Context {
             }
             if opt_level == OptLevel::SpeedAndSize {
                 self.shrink_instructions(isa)?;
-            }
-            if cranelift_spectre::settings::get_spectre_pht_mitigation()
-                == cranelift_spectre::settings::SpectrePHTMitigation::BLADE
-            {
-                self.blade(isa)?;
             }
             let result = self.relax_branches(isa, can_be_indirectly_called);
 
