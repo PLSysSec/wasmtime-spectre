@@ -6,7 +6,8 @@ struct SpectreSettings {
     spectre_mitigation: SpectreMitigation,
     spectre_pht_mitigation: SpectrePHTMitigation,
     spectre_only_sandbox_isolation: bool,
-    spectre_disable_core_switching: bool
+    spectre_disable_core_switching: bool,
+    spectre_disable_btbflush: bool,
 }
 
 static mut SPECTRE_SETTINGS: SpectreSettings = SpectreSettings {
@@ -14,6 +15,7 @@ static mut SPECTRE_SETTINGS: SpectreSettings = SpectreSettings {
     spectre_pht_mitigation: SpectrePHTMitigation::NONE,
     spectre_only_sandbox_isolation: false,
     spectre_disable_core_switching: false,
+    spectre_disable_btbflush: false,
 };
 
 #[derive(PartialEq, Debug, Clone, Copy, FromPrimitive)]
@@ -56,6 +58,7 @@ pub fn use_spectre_mitigation_settings(
     spectre_pht_mitigation: Option<SpectrePHTMitigation>,
     spectre_only_sandbox_isolation: bool,
     spectre_disable_core_switching: bool,
+    spectre_disable_btbflush: bool,
 ) {
     let spectre_mitigation = spectre_mitigation.unwrap_or(get_spectre_mitigation());
     let spectre_pht_mitigation = spectre_pht_mitigation.unwrap_or(get_spectre_pht_mitigation());
@@ -80,6 +83,7 @@ pub fn use_spectre_mitigation_settings(
             spectre_pht_mitigation,
             spectre_only_sandbox_isolation,
             spectre_disable_core_switching,
+            spectre_disable_btbflush,
         };
     }
 }
@@ -109,5 +113,12 @@ pub fn get_spectre_only_sandbox_isolation() -> bool {
 pub fn get_spectre_disable_core_switching() -> bool {
     unsafe {
         return SPECTRE_SETTINGS.spectre_disable_core_switching.clone();
+    }
+}
+
+#[inline(always)]
+pub fn get_spectre_disable_btbflush() -> bool {
+    unsafe {
+        return SPECTRE_SETTINGS.spectre_disable_btbflush.clone();
     }
 }

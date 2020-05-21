@@ -35,8 +35,13 @@ pub fn perform_transition_protection_in() {
                     change_affinity(&cpuset);
                 }
             }
-            if mitigation == SpectreMitigation::SFI {
+            if mitigation == SpectreMitigation::SFI && !get_spectre_disable_btbflush() {
                 //BTB flush
+                let path: *const libc::c_char = "/dev/cool\0".as_ptr() as _;
+                let btbf = unsafe { libc::open(path, 0) };
+                if btbf < 0 {
+                    panic!("Can't find btb flush device.\nPlease insmod cool.ko first.\n");
+                }
             }
         }
     }
