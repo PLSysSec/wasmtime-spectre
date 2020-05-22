@@ -16,24 +16,20 @@ unsafe fn change_cores(cpuset: &libc::cpu_set_t) {
 
 #[inline(always)]
 pub fn perform_transition_protection_in() {
-    unsafe {
-        llvm_asm!("lfence"
-            :
-            :
-            :
-            : "volatile"
-        );
-    }
     // Hack: In an actual implementation, this if condition is bad. You would want to do this unconditionally or with cmovs
     // But that's just engineering work
-    let only_sandbox_isolation = get_spectre_only_sandbox_isolation();
-    if !only_sandbox_isolation {
-        let mitigation = get_spectre_mitigation();
-        if mitigation == SpectreMitigation::LOADLFENCE
-            || mitigation == SpectreMitigation::STRAWMAN
-            || mitigation == SpectreMitigation::SFI
-            || mitigation == SpectreMitigation::CET
-        {
+    let mitigation = get_spectre_mitigation();
+    if mitigation != SpectreMitigation::NONE {
+        unsafe {
+            llvm_asm!("lfence"
+                :
+                :
+                :
+                : "volatile"
+            );
+        }
+
+        if !get_spectre_only_sandbox_isolation() {
             if !get_spectre_disable_core_switching() {
                 unsafe {
                     let cpuset = crate::settings::SANDBOX_CPUS.unwrap();
@@ -54,26 +50,25 @@ pub fn perform_transition_protection_in() {
 
 #[inline(always)]
 pub fn perform_transition_protection_out() {
-    unsafe {
-        llvm_asm!("lfence"
-            :
-            :
-            :
-            : "volatile"
-        );
-    }
     // Hack: In an actual implementation, this if condition is bad. You would want to do this unconditionally or with cmovs
     // But that's just engineering work
     let mitigation = get_spectre_mitigation();
-    if mitigation == SpectreMitigation::LOADLFENCE
-        || mitigation == SpectreMitigation::STRAWMAN
-        || mitigation == SpectreMitigation::SFI
-        || mitigation == SpectreMitigation::CET
-    {
-        if !get_spectre_disable_core_switching() {
-            unsafe {
-                let cpuset = crate::settings::APPLICATION_CPUS.unwrap();
-                change_cores(&cpuset);
+    if mitigation != SpectreMitigation::NONE {
+        unsafe {
+            llvm_asm!("lfence"
+                :
+                :
+                :
+                : "volatile"
+            );
+        }
+
+        if !get_spectre_only_sandbox_isolation() {
+            if !get_spectre_disable_core_switching() {
+                unsafe {
+                    let cpuset = crate::settings::APPLICATION_CPUS.unwrap();
+                    change_cores(&cpuset);
+                }
             }
         }
     }
