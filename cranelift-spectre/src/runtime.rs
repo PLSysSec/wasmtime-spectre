@@ -39,7 +39,7 @@ pub fn perform_transition_protection_in() {
                     change_cores(&cpuset);
                 }
             }
-            if mitigation == SpectreMitigation::SFI && !get_spectre_disable_btbflush() {
+            if mitigation == SpectreMitigation::SFI && !get_spectre_disable_btbflush() && !get_spectre_no_cross_sbx_attacks() {
                 unsafe {
                     btb_flush();
                 }
