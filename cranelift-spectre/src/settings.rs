@@ -2,13 +2,13 @@ use num_derive::FromPrimitive;
 use std::mem::MaybeUninit;
 
 #[derive(Clone)]
-struct SpectreSettings {
-    spectre_mitigation: SpectreMitigation,
-    spectre_pht_mitigation: SpectrePHTMitigation,
-    spectre_only_sandbox_isolation: bool,
-    spectre_no_cross_sbx_attacks: bool,
-    spectre_disable_core_switching: bool,
-    spectre_disable_btbflush: bool,
+pub struct SpectreSettings {
+    pub spectre_mitigation: SpectreMitigation,
+    pub spectre_pht_mitigation: SpectrePHTMitigation,
+    pub spectre_only_sandbox_isolation: bool,
+    pub spectre_no_cross_sbx_attacks: bool,
+    pub spectre_disable_core_switching: bool,
+    pub spectre_disable_btbflush: bool,
 }
 
 static mut SPECTRE_SETTINGS: SpectreSettings = SpectreSettings {
@@ -66,30 +66,36 @@ pub fn use_spectre_mitigation_settings(
 ) {
     let spectre_mitigation = spectre_mitigation.unwrap_or(get_spectre_mitigation());
     let spectre_pht_mitigation = spectre_pht_mitigation.unwrap_or(get_spectre_pht_mitigation());
+    use_spectre_mitigation_settings_all(SpectreSettings {
+        spectre_mitigation,
+        spectre_pht_mitigation,
+        spectre_only_sandbox_isolation,
+        spectre_no_cross_sbx_attacks,
+        spectre_disable_core_switching,
+        spectre_disable_btbflush,
+    });
+}
 
+pub fn use_spectre_mitigation_settings_all(
+    settings: SpectreSettings,
+) {
     unsafe{
-        let cpu_count = sysconf::raw::sysconf(sysconf::SysconfVariable::ScNprocessorsOnln).unwrap() as usize;
-        let mut cpuset = MaybeUninit::uninit().assume_init();
-        libc::CPU_ZERO(&mut cpuset);
-        for i in 1..cpu_count {
-            libc::CPU_SET(i, &mut cpuset);
-        }
-        APPLICATION_CPUS = Some(cpuset);
+        if APPLICATION_CPUS.is_none() {
+            let cpu_count = sysconf::raw::sysconf(sysconf::SysconfVariable::ScNprocessorsOnln).unwrap() as usize;
+            let mut cpuset = MaybeUninit::uninit().assume_init();
+            libc::CPU_ZERO(&mut cpuset);
+            for i in 1..cpu_count {
+                libc::CPU_SET(i, &mut cpuset);
+            }
+            APPLICATION_CPUS = Some(cpuset);
 
-        let mut cpuset = MaybeUninit::uninit().assume_init();
-        libc::CPU_ZERO(&mut cpuset);
-        libc::CPU_SET(0, &mut cpuset);
-        SANDBOX_CPUS = Some(cpuset);
-    }
-    unsafe {
-        SPECTRE_SETTINGS = SpectreSettings {
-            spectre_mitigation,
-            spectre_pht_mitigation,
-            spectre_only_sandbox_isolation,
-            spectre_no_cross_sbx_attacks,
-            spectre_disable_core_switching,
-            spectre_disable_btbflush,
-        };
+            let mut cpuset = MaybeUninit::uninit().assume_init();
+            libc::CPU_ZERO(&mut cpuset);
+            libc::CPU_SET(0, &mut cpuset);
+            SANDBOX_CPUS = Some(cpuset);
+        }
+        SPECTRE_SETTINGS = settings;
+
     }
 }
 
