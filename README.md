@@ -26,6 +26,10 @@
   </h3>
 </div>
 
+## wasmtime-spectre
+
+This is a fork of the wasmtime project that adds spectre related hardening to the codegeneration. This work is part of the research paper "Hardening WebAssembly against Spectre". This component is used by https://www.github.com/PLSysSec/lucet-spectre
+
 ## Installation
 
 The Wasmtime CLI can be installed on Linux and macOS with a small install
