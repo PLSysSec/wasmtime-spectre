@@ -75,7 +75,9 @@ fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst, divert: &RegDiv
 
     match mitigation {
         SpectreMitigation::STRAWMAN => {
-            if opcode == Opcode::Call || opcode == Opcode::CallIndirect {
+            if !opcode.is_terminator()
+                && (opcode.is_call() || opcode.is_branch() || opcode.is_indirect_branch())
+            {
                 cur.func.post_lfence[*inst] = true;
             }
         }
