@@ -75,6 +75,12 @@ fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst, divert: &RegDiv
 
     match mitigation {
         SpectreMitigation::STRAWMAN => {
+            // Strawman wants to add lfence to the beginning of every basic block, i.e. branch
+            // target. In addition to the beginning of every EBB (done above), we need to add
+            // lfence inside an EBB after every call (bc that's a return target) and after
+            // every conditional branch (bc that's a fallthrough target).
+            // Note that in Cranelift, conditional branches and calls do not end blocks (EBBs),
+            // while unconditional branches, rets, etc do end EBBs.
             if !opcode.is_terminator()
                 && (opcode.is_call() || opcode.is_branch() || opcode.is_indirect_branch())
             {
