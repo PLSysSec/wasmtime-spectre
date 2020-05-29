@@ -132,7 +132,7 @@ fn insert_fence_at_beginning_of_block(func: &mut Function, inst: Inst) {
     loop {
         if cur_inst == first_inst {
             // got to beginning of EBB: insert at beginning of EBB
-            func.block_lfence[ebb] = true;
+            func.pre_lfence[first_inst] = true;
             break;
         }
         cur_inst = func
