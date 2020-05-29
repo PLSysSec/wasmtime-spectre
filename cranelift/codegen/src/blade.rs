@@ -2,7 +2,7 @@
 
 use crate::entity::{EntityRef, SecondaryMap};
 use crate::flowgraph::ControlFlowGraph;
-use crate::ir::{Function, Inst, InstructionData, Value, ValueDef, Opcode};
+use crate::ir::{Function, Inst, InstructionData, Opcode, Value, ValueDef};
 use rs_graph::linkedlistgraph::{Edge, LinkedListGraph, Node};
 use rs_graph::maxflow::pushrelabel::PushRelabel;
 use rs_graph::maxflow::MaxFlow;
@@ -60,7 +60,11 @@ fn insert_fence_before(func: &mut Function, bnode: BladeNode) {
         BladeNode::ValueDef(val) => match func.dfg.value_def(val) {
             ValueDef::Result(inst, _) => {
                 // cut at this value by putting lfence before `inst`
-                func.pre_lfence[inst] = true;
+                //func.pre_lfence[inst] = true;
+                // edit: just put one fence at the beginning of the
+                // block. this stops speculation due to branch
+                // mispredictions
+                insert_fence_at_beginning_of_block(func, inst);
             }
             ValueDef::Param(ebb, _) => {
                 // cut at this value by putting lfence at beginning of
@@ -74,7 +78,11 @@ fn insert_fence_before(func: &mut Function, bnode: BladeNode) {
         },
         BladeNode::Sink(inst) => {
             // cut at this instruction by putting lfence before it
-            func.pre_lfence[inst] = true;
+            //func.pre_lfence[inst] = true;
+            // edit: just put one fence at the beginning of the
+            // block. this stops speculation due to branch
+            // mispredictions
+            insert_fence_at_beginning_of_block(func, inst);
         }
     }
 }
@@ -84,7 +92,11 @@ fn insert_fence_after(func: &mut Function, bnode: BladeNode) {
         BladeNode::ValueDef(val) => match func.dfg.value_def(val) {
             ValueDef::Result(inst, _) => {
                 // cut at this value by putting lfence after `inst`
-                func.post_lfence[inst] = true;
+                //func.post_lfence[inst] = true;
+                // edit: just put one fence at the beginning of the
+                // block. this stops speculation due to branch
+                // mispredictions
+                insert_fence_at_beginning_of_block(func, inst);
             }
             ValueDef::Param(ebb, _) => {
                 // cut at this value by putting lfence at beginning of
@@ -97,6 +109,43 @@ fn insert_fence_after(func: &mut Function, bnode: BladeNode) {
             }
         },
         BladeNode::Sink(_) => panic!("Fencing after a sink instruction"),
+    }
+}
+
+// Inserts a fence at the beginning of the _basic block_ containing the given
+// instruction. "Basic block" is not to be confused with the _EBB_ or "extended
+// basic block" (which is what Cranelift considers a "block").
+// For our purposes in this function, all branch, call, and ret instructions
+// terminate blocks. In contrast, in Cranelift, only unconditional branch and
+// ret instructions terminate EBBs, while conditional branches and call
+// instructions do not terminate EBBs.
+fn insert_fence_at_beginning_of_block(func: &mut Function, inst: Inst) {
+    let ebb = func
+        .layout
+        .inst_block(inst)
+        .expect("Instruction is not in layout");
+    let first_inst = func
+        .layout
+        .first_inst(ebb)
+        .expect("EBB has no instructions");
+    let mut cur_inst = inst;
+    loop {
+        if cur_inst == first_inst {
+            // got to beginning of EBB: insert at beginning of EBB
+            func.block_lfence[ebb] = true;
+            break;
+        }
+        cur_inst = func
+            .layout
+            .prev_inst(cur_inst)
+            .expect("Ran off the beginning of the EBB");
+        let opcode = func.dfg[cur_inst].opcode();
+        if opcode.is_call() || opcode.is_branch() || opcode.is_indirect_branch() {
+            // found the previous call or branch instruction:
+            // insert after that call or branch instruction
+            func.post_lfence[cur_inst] = true;
+            break;
+        }
     }
 }
 
