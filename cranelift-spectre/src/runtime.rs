@@ -8,6 +8,7 @@ extern "C" {
 }
 
 thread_local! {
+    static CORES_SET: RefCell<bool> = RefCell::new(false);
     static APPLICATION_CPUS: RefCell<Option<libc::cpu_set_t>> = RefCell::new(None);
     static SANDBOX_CPUS: RefCell<Option<libc::cpu_set_t>> = RefCell::new(None);
     static SPECTRE_RUNTIME_SETTINGS: RefCell<SpectreSettings> = RefCell::new(SpectreSettings {
@@ -20,36 +21,77 @@ thread_local! {
     });
 }
 
-pub fn use_spectre_mitigation_runtime_settings(
-    settings: SpectreSettings,
-) {
+pub fn use_spectre_mitigation_core_partition(sandbox_cores: Option<usize>) {
+    let already_set: bool = CORES_SET.with(|cores_set| {
+        *cores_set.borrow()
+    });
+
+    if already_set && sandbox_cores.is_none() {
+        return;
+    }
+
     unsafe{
         let cpu_count = sysconf::raw::sysconf(sysconf::SysconfVariable::ScNprocessorsOnln).unwrap() as usize;
 
+        let sandbox_cores = sandbox_cores.unwrap_or(cpu_count/2);
+        if sandbox_cores >= cpu_count {
+            panic!("Specified {} sandbox cores, system has {} cores and at least one must be given to the application",
+                sandbox_cores, cpu_count);
+        }
+
+        //assuming we are on a hyperthreaded system
+        if cpu_count % 2 != 0 {
+            panic!("Expected even number of cpu cores on hyperthreaded system");
+        }
+        if sandbox_cores == 0 && sandbox_cores % 2 != 0 {
+            panic!("Expected even non-zero number of sandbox cores on hyperthreaded system");
+        }
+
+        let application_cores = cpu_count - sandbox_cores;
+        let mut application_core_arr = vec![false; cpu_count];
+        for i in 0..application_cores/2 {
+            application_core_arr[i] = true;
+            // also assign hyperthreaded core
+            application_core_arr[i + cpu_count/2] = true;
+        }
+
         APPLICATION_CPUS.with(|app_cpus| {
-            if app_cpus.borrow().is_none() {
-                let mut cpuset = MaybeUninit::uninit().assume_init();
-                libc::CPU_ZERO(&mut cpuset);
-                for i in 1..cpu_count {
+            let mut cpuset = MaybeUninit::uninit().assume_init();
+            libc::CPU_ZERO(&mut cpuset);
+            for i in 0..cpu_count {
+                if application_core_arr[i] {
                     libc::CPU_SET(i, &mut cpuset);
                 }
-                *app_cpus.borrow_mut() = Some(cpuset);
             }
+            *app_cpus.borrow_mut() = Some(cpuset);
         });
 
         SANDBOX_CPUS.with(|sbx_cpus| {
-            if sbx_cpus.borrow().is_none() {
-                let mut cpuset = MaybeUninit::uninit().assume_init();
-                libc::CPU_ZERO(&mut cpuset);
-                libc::CPU_SET(0, &mut cpuset);
-                *sbx_cpus.borrow_mut() = Some(cpuset);
+            let mut cpuset = MaybeUninit::uninit().assume_init();
+            libc::CPU_ZERO(&mut cpuset);
+            for i in 0..cpu_count {
+                if !application_core_arr[i] {
+                    libc::CPU_SET(i, &mut cpuset);
+                }
             }
+            *sbx_cpus.borrow_mut() = Some(cpuset);
         });
 
-        SPECTRE_RUNTIME_SETTINGS.with(|spectre_runtime_settings|{
-            *spectre_runtime_settings.borrow_mut() = settings;
-        });
     }
+
+    CORES_SET.with(|cores_set| {
+        *cores_set.borrow_mut() = true;
+    });
+}
+
+pub fn use_spectre_mitigation_runtime_settings(
+    settings: SpectreSettings,
+) {
+    use_spectre_mitigation_core_partition(None);
+
+    SPECTRE_RUNTIME_SETTINGS.with(|spectre_runtime_settings|{
+        *spectre_runtime_settings.borrow_mut() = settings;
+    });
 }
 
 #[inline(always)]
