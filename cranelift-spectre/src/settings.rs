@@ -45,7 +45,11 @@ pub fn get_default_pht_protection(
     }
 
     let spectre_mitigation = spectre_mitigation.unwrap();
-    if spectre_mitigation == SpectreMitigation::SFI || spectre_mitigation == SpectreMitigation::CET
+    if spectre_mitigation == SpectreMitigation::SFI
+    {
+        return Some(SpectrePHTMitigation::PHTTOBTB);
+    }
+    else if spectre_mitigation == SpectreMitigation::CET
     {
         return Some(SpectrePHTMitigation::BLADE);
     }
