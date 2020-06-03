@@ -384,11 +384,14 @@ fn expand_br_table_jt(
         }
     }
 
-    let oob = pos
-        .ins()
-        .icmp_imm(IntCC::UnsignedGreaterThanOrEqual, arg, table_size);
+    if !pos.func.brtable_no_bounds_check[inst] {
+        let oob = pos
+            .ins()
+            .icmp_imm(IntCC::UnsignedGreaterThanOrEqual, arg, table_size);
 
-    pos.ins().brnz(oob, default_block, &[]);
+        pos.ins().brnz(oob, default_block, &[]);
+    }
+
     pos.ins().jump(jump_table_block, &[]);
     pos.insert_block(jump_table_block);
 

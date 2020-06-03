@@ -26,6 +26,7 @@ use crate::loop_analysis::LoopAnalysis;
 use crate::machinst::MachCompileResult;
 use crate::nan_canonicalization::do_nan_canonicalization;
 use crate::postopt::do_postopt;
+use crate::pht_to_btb::do_pht_to_btb;
 use crate::redundant_reload_remover::RedundantReloadRemover;
 use crate::regalloc;
 use crate::result::CodegenResult;
@@ -168,6 +169,10 @@ impl Context {
         }
         if isa.flags().enable_nan_canonicalization() {
             self.canonicalize_nans(isa)?;
+        }
+
+        if get_spectre_pht_mitigation() == SpectrePHTMitigation::PHTTOBTB {
+            self.pht_to_btb(isa)?;
         }
 
         self.legalize(isa)?;
@@ -447,6 +452,12 @@ impl Context {
     /// Perform the Blade pass to insert lfences in appropriate places.
     pub fn blade(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
         do_blade(&mut self.func, &self.cfg);
+        self.verify_if(isa)
+    }
+
+    /// Perform the pht to btb pass to replace direct branches with cmov + indirect jump.
+    pub fn pht_to_btb(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
+        do_pht_to_btb(&mut self.func, &mut self.cfg);
         self.verify_if(isa)
     }
 

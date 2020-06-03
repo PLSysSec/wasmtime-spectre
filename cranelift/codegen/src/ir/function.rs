@@ -83,6 +83,9 @@ pub struct Function {
     /// Used for spectre resistance. Set of registers to truncate to 32-bits before using the instruction.
     pub registers_to_truncate: SecondaryMap<Inst, Vec<u16>>,
 
+    /// Avoid bounds checks for these jump tables. Used the pht to btb conversion which converts direct branches to switch tables
+    pub brtable_no_bounds_check: SecondaryMap<Inst, bool>,
+
     /// Location assigned to every value.
     pub locations: ValueLocations,
 
@@ -148,6 +151,7 @@ impl Function {
             block_endbranch: SecondaryMap::new(),
             replacement: SecondaryMap::new(),
             registers_to_truncate: SecondaryMap::new(),
+            brtable_no_bounds_check: SecondaryMap::new(),
             locations: SecondaryMap::new(),
             entry_diversions: EntryRegDiversions::new(),
             offsets: SecondaryMap::new(),
@@ -177,6 +181,7 @@ impl Function {
         self.block_endbranch.clear();
         self.replacement.clear();
         self.registers_to_truncate.clear();
+        self.brtable_no_bounds_check.clear();
         self.locations.clear();
         self.entry_diversions.clear();
         self.offsets.clear();
