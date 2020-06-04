@@ -106,6 +106,7 @@ unsafe fn change_cores(cpuset: &libc::cpu_set_t) {
 
 extern "C" {
     fn btb_flush();
+    fn invoke_lfence();
 }
 
 #[inline(always)]
@@ -150,12 +151,7 @@ pub fn perform_transition_protection_in() {
     let mitigation = get_spectre_mitigation();
     if mitigation != SpectreMitigation::NONE {
         unsafe {
-            llvm_asm!("lfence"
-                :
-                :
-                :
-                : "volatile"
-            );
+            invoke_lfence();
         }
 
         if !get_spectre_only_sandbox_isolation() {
@@ -182,12 +178,7 @@ pub fn perform_transition_protection_out() {
     let mitigation = get_spectre_mitigation();
     if mitigation != SpectreMitigation::NONE {
         unsafe {
-            llvm_asm!("lfence"
-                :
-                :
-                :
-                : "volatile"
-            );
+            invoke_lfence();
         }
 
         if !get_spectre_only_sandbox_isolation() {
