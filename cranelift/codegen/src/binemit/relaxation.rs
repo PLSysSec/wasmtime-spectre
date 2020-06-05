@@ -129,7 +129,10 @@ fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst, divert: &RegDiv
     }
 
     if pht_mitigation == SpectrePHTMitigation::CFI {
-        if !opcode.is_terminator() && opcode.is_call() && cur.func.post_inst_guards[*inst].len() == 0 {
+        if !opcode.is_terminator() &&
+            (opcode.is_call() || opcode.is_branch() || opcode.is_indirect_branch())
+            && cur.func.post_inst_guards[*inst].len() == 0
+        {
             let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(cur, divert);
             let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(42, zero_heap, zero_stack);
             cur.func.post_inst_guards[*inst].append(&mut bytes);
