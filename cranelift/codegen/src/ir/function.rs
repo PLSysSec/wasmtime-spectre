@@ -96,11 +96,11 @@ pub struct Function {
     pub post_inst_guards: SecondaryMap<Inst, Vec<u8>>,
 
     /// Used for spectre resistance. What is the unique cfi label of this linear block
-    pub cfi_block_nums: SecondaryMap<Block, u64>,
+    pub cfi_block_nums: SecondaryMap<Block, Option<u64>>,
 
     /// Used for spectre resistance. What is the unique cfi label of this linear block.
     /// Some instructions mark the beginning of linear blocks
-    pub cfi_inst_nums: SecondaryMap<Inst, u64>,
+    pub cfi_inst_nums: SecondaryMap<Inst, Option<u64>>,
 
     /// Location assigned to every value.
     pub locations: ValueLocations,

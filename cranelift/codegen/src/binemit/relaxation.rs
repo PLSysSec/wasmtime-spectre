@@ -49,6 +49,7 @@ use cranelift_spectre::settings::{
 };
 
 fn spectre_resistance_on_func(
+    isa: &dyn TargetIsa,
     cur: &mut FuncCursor,
     first_inst: &Inst,
     divert: &RegDiversions,
@@ -67,22 +68,16 @@ fn spectre_resistance_on_func(
         if can_be_indirectly_called {
             let block = cur.current_block().unwrap();
             if cur.func.block_guards[block].len() == 0 {
-                let (zero_heap, zero_stack) =
-                    is_heap_or_stack_op_before_next_ctrl_flow(cur, divert);
-                let mut bytes =
-                    cranelift_spectre::inst::get_cfi_check_bytes(42, zero_heap, zero_stack);
+                let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
+                let label = cur.func.cfi_block_nums[block].unwrap();
+                let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, zero_heap, zero_stack);
                 cur.func.block_guards[block].append(&mut bytes);
             }
         }
     }
 }
 
-fn spectre_resistance_on_basic_block(
-    cur: &mut FuncCursor,
-    first_inst: &Inst,
-    divert: &RegDiversions,
-    is_first_block: bool,
-) {
+fn spectre_resistance_on_basic_block(isa: &dyn TargetIsa, cur: &mut FuncCursor, first_inst: &Inst, divert: &RegDiversions, is_first_block: bool) {
     let mitigation = get_spectre_mitigation();
     let pht_mitigation = get_spectre_pht_mitigation();
 
@@ -93,14 +88,15 @@ fn spectre_resistance_on_basic_block(
     if pht_mitigation == SpectrePHTMitigation::CFI {
         let block = cur.current_block().unwrap();
         if !is_first_block && cur.func.block_guards[block].len() == 0 {
-            let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(cur, divert);
-            let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(42, zero_heap, zero_stack);
+            let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
+            let label = cur.func.cfi_block_nums[block].unwrap();
+            let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, zero_heap, zero_stack);
             cur.func.block_guards[block].append(&mut bytes);
         }
     }
 }
 
-fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst, divert: &RegDiversions) {
+fn spectre_resistance_on_inst(isa: &dyn TargetIsa, cur: &mut FuncCursor, inst: &Inst, divert: &RegDiversions) {
     let opcode = cur.func.dfg[*inst].opcode();
     let _format = opcode.format();
     let mitigation = get_spectre_mitigation();
@@ -131,7 +127,7 @@ fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst, divert: &RegDiv
                 cur.func.replacement[*inst] = replacement.to_vec();
             }
 
-            let heap_index_registers = get_pinned_base_heap_index_registers(cur, divert, inst);
+            let heap_index_registers = get_pinned_base_heap_index_registers(isa, cur, divert, inst);
             cur.func.registers_to_truncate[*inst] = heap_index_registers;
         }
         _ => {}
@@ -142,8 +138,9 @@ fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst, divert: &RegDiv
             && (opcode.is_call() || opcode.is_branch() || opcode.is_indirect_branch())
             && cur.func.post_inst_guards[*inst].len() == 0
         {
-            let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(cur, divert);
-            let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(42, zero_heap, zero_stack);
+            let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
+            let label = cur.func.cfi_inst_nums[*inst].unwrap();
+            let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, zero_heap, zero_stack);
             cur.func.post_inst_guards[*inst].append(&mut bytes);
         }
     }
@@ -161,44 +158,21 @@ fn get_registers(cur: &FuncCursor, divert: &RegDiversions, values: &[Value]) -> 
     regs
 }
 
-fn is_heap_op(func: &Function, in_regs: &[RegUnit], inst: Inst) -> bool {
+fn is_heap_op(isa: &dyn TargetIsa, func: &Function, in_regs: &[RegUnit], inst: Inst) -> bool {
     let opcode = func.dfg[inst].opcode();
-
-    // any load store that uses the sandbox heap is a "heap op"
-
-    /* old implementation
-    match opcode.format() {
-        InstructionFormat::Load { .. } | InstructionFormat::LoadComplex { .. } => {
-            if in_regs.len() <= 1 {
-                false
-            } else {
-                let first_reg: u16 = in_regs[in_regs.len() - 2].into();
-                first_reg == 15
-            }
-        }
-        InstructionFormat::Store { .. } | InstructionFormat::StoreComplex { .. } => {
-            if in_regs.len() <= 2 {
-                false
-            } else {
-                let first_reg: u16 = in_regs[in_regs.len() - 2].into();
-                first_reg == 15
-            }
-        }
-        _ => false,
-    }
-    */
-    // new implementation
+    let r15 = isa.register_info().parse_regunit("r15").unwrap();
     if opcode.can_load() || opcode.can_store() {
-        in_regs.iter().any(|&r| r == 15)
+        in_regs.iter().any(|&r| r == r15)
     } else {
         false
     }
 }
 
-fn is_stack_op(func: &Function, in_regs: &[RegUnit], inst: Inst) -> bool {
+fn is_stack_op(isa: &dyn TargetIsa, func: &Function, in_regs: &[RegUnit], inst: Inst) -> bool {
     let opcode = func.dfg[inst].opcode();
+    let rsp = isa.register_info().parse_regunit("rsp").unwrap();
     if opcode.can_load() || opcode.can_store() {
-        in_regs.iter().any(|&r| r == 4)
+        opcode == Opcode::X86Push || opcode == Opcode::X86Pop || opcode == Opcode::Spill || in_regs.iter().any(|&r| r == rsp)
     } else {
         false
     }
@@ -212,10 +186,7 @@ fn is_stack_op(func: &Function, in_regs: &[RegUnit], inst: Inst) -> bool {
 /// heap op, and the second indicates whether there's a stack op
 ///
 /// Preserves the cursor position.
-fn is_heap_or_stack_op_before_next_ctrl_flow(
-    cur: &mut FuncCursor,
-    divert: &RegDiversions,
-) -> (bool, bool) {
+fn is_heap_or_stack_op_before_next_ctrl_flow(isa: &dyn TargetIsa, cur: &mut FuncCursor, divert: &RegDiversions) -> (bool, bool) {
     let saved_cursor_position = cur.position();
     let mut found_heap_op = false;
     let mut found_stack_op = false;
@@ -223,8 +194,19 @@ fn is_heap_or_stack_op_before_next_ctrl_flow(
         let cur_inst = cur.current_inst().unwrap();
         let args = cur.func.dfg.inst_args(cur_inst);
         let in_regs = get_registers(cur, &divert, args);
-        found_heap_op |= is_heap_op(&cur.func, &in_regs, cur_inst);
-        found_stack_op |= is_stack_op(&cur.func, &in_regs, cur_inst);
+        let _rets = cur.func.dfg.inst_results(cur_inst);
+        let _out_regs = get_registers(&cur, &divert, _rets);
+        let _opcode = cur.func.dfg[cur_inst].opcode();
+
+        found_heap_op |= is_heap_op(isa, &cur.func, &in_regs, cur_inst);
+        found_stack_op |= is_stack_op(isa, &cur.func, &in_regs, cur_inst);
+
+        if found_heap_op {
+            let _a = 1;
+        }
+        if found_stack_op {
+            let _a = 1;
+        }
         let opcode = cur.func.dfg[cur_inst].opcode();
         if opcode.is_terminator()
             || opcode.is_branch()
@@ -242,6 +224,7 @@ fn is_heap_or_stack_op_before_next_ctrl_flow(
 }
 
 fn get_pinned_base_heap_index_registers(
+    isa: &dyn TargetIsa,
     cur: &FuncCursor,
     divert: &RegDiversions,
     inst: &Inst,
@@ -259,7 +242,7 @@ fn get_pinned_base_heap_index_registers(
         vec![in_regs.last().unwrap().clone()]
     };
 
-    let regs = if is_heap_op(&cur.func, &in_regs, *inst) {
+    let regs = if is_heap_op(isa, &cur.func, &in_regs, *inst) {
         get_heap_index_regs(&in_regs)
     } else {
         vec![]
@@ -279,6 +262,7 @@ pub fn relax_branches(
     can_be_indirectly_called: bool,
 ) -> CodegenResult<CodeInfo> {
     let _tt = timing::relax_branches();
+    let _reg = isa.register_info().parse_regunit("r15");
 
     let encinfo = isa.encoding_info();
 
@@ -340,13 +324,13 @@ pub fn relax_branches(
                 let enc = cur.func.encodings[inst];
 
                 if first_inst_in_func {
-                    spectre_resistance_on_func(&mut cur, &inst, &divert, can_be_indirectly_called);
+                    spectre_resistance_on_func(isa, &mut cur, &inst, &divert, can_be_indirectly_called);
                 }
                 if first_inst_in_block {
-                    spectre_resistance_on_basic_block(&mut cur, &inst, &divert, first_inst_in_func);
+                    spectre_resistance_on_basic_block(isa, &mut cur, &inst, &divert, first_inst_in_func);
                 }
 
-                spectre_resistance_on_inst(&mut cur, &inst, &divert);
+                spectre_resistance_on_inst(isa, &mut cur, &inst, &divert);
 
                 let reg_clear_bytes_size: usize = cur.func.registers_to_truncate[inst]
                     .iter()
