@@ -147,7 +147,7 @@ pub fn get_test_bytes(reg: u16) -> &'static [u8] {
 // cmovz r13, r14
 // cmovz r14, r14
 // cmovz r15, r14
-pub fn get_cmov_from_r14(reg: u16) -> &'static [u8] {
+pub fn get_cmovz_from_r14(reg: u16) -> &'static [u8] {
     match reg {
         0 => &[0x49, 0x0f, 0x44, 0xc6],
         1 => &[0x49, 0x0f, 0x44, 0xce],
@@ -169,12 +169,51 @@ pub fn get_cmov_from_r14(reg: u16) -> &'static [u8] {
     }
 }
 
+// cmovnz rax, r14
+// cmovnz rcx, r14
+// cmovnz rdx, r14
+// cmovnz rbx, r14
+// cmovnz rsp, r14
+// cmovnz rbp, r14
+// cmovnz rsi, r14
+// cmovnz rdi, r14
+// cmovnz r8, r14
+// cmovnz r9, r14
+// cmovnz r10, r14
+// cmovnz r11, r14
+// cmovnz r12, r14
+// cmovnz r13, r14
+// cmovnz r14, r14
+// cmovnz r15, r14
+pub fn get_cmovnz_from_r14(reg: u16) -> &'static [u8] {
+    match reg {
+        0 => &[0x49, 0x0f, 0x45, 0xc6],
+        1 => &[0x49, 0x0f, 0x45, 0xce],
+        2 => &[0x49, 0x0f, 0x45, 0xd6],
+        3 => &[0x49, 0x0f, 0x45, 0xde],
+        4 => &[0x49, 0x0f, 0x45, 0xe6],
+        5 => &[0x49, 0x0f, 0x45, 0xee],
+        6 => &[0x49, 0x0f, 0x45, 0xf6],
+        7 => &[0x49, 0x0f, 0x45, 0xfe],
+        8 => &[0x4d, 0x0f, 0x45, 0xc6],
+        9 => &[0x4d, 0x0f, 0x45, 0xce],
+        10 => &[0x4d, 0x0f, 0x45, 0xd6],
+        11 => &[0x4d, 0x0f, 0x45, 0xde],
+        12 => &[0x4d, 0x0f, 0x45, 0xe6],
+        13 => &[0x4d, 0x0f, 0x45, 0xee],
+        14 => &[0x4d, 0x0f, 0x45, 0xf6],
+        15 => &[0x4d, 0x0f, 0x45, 0xfe],
+        _ => panic!("Unknown reg"),
+    }
+}
+
+
 pub fn get_cfi_check_bytes(amt: u32) -> Vec<u8> {
 
     let b1 = get_sub_const_bytes(14, amt);
     let b2 = get_test_bytes(14);
-    let b3 = get_cmov_from_r14(15);
-    let b4 = get_cmov_from_r14(4);
+    let b3 = get_cmovnz_from_r14(15);
+    let b4 = get_cmovnz_from_r14(4);
 
     let mut ret = Vec::new();
     ret.extend_from_slice(&b1);
