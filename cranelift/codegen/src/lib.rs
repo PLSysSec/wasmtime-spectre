@@ -90,6 +90,7 @@ pub use crate::entity::packed_option;
 mod abi;
 mod bitset;
 mod blade;
+mod cfi_number_allocate;
 mod constant_hash;
 mod context;
 mod dce;

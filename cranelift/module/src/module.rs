@@ -573,6 +573,7 @@ where
         ctx: &mut Context,
         trap_sink: &mut TS,
         can_be_indirectly_called: bool,
+        cfi_start_num: &mut u64,
     ) -> ModuleResult<ModuleCompiledFunction>
     where
         TS: binemit::TrapSink,
@@ -588,7 +589,7 @@ where
             ctx.func.display(self.backend.isa())
         );
         let CodeInfo { total_size, .. } =
-            ctx.compile(self.backend.isa(), can_be_indirectly_called)?;
+            ctx.compile(self.backend.isa(), can_be_indirectly_called, cfi_start_num)?;
         let info = &self.contents.functions[func];
         if info.compiled.is_some() {
             return Err(ModuleError::DuplicateDefinition(info.decl.name.clone()));

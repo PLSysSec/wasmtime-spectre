@@ -95,6 +95,13 @@ pub struct Function {
     /// Used for spectre resistance. What instructions to use to guard after the instruction.
     pub post_inst_guards: SecondaryMap<Inst, Vec<u8>>,
 
+    /// Used for spectre resistance. What is the unique cfi label of this linear block
+    pub cfi_block_nums: SecondaryMap<Block, u64>,
+
+    /// Used for spectre resistance. What is the unique cfi label of this linear block. 
+    /// Some instructions mark the beginning of linear blocks
+    pub cfi_inst_nums: SecondaryMap<Inst, u64>,
+
     /// Location assigned to every value.
     pub locations: ValueLocations,
 
@@ -164,6 +171,8 @@ impl Function {
             block_guards: SecondaryMap::new(),
             pre_inst_guards: SecondaryMap::new(),
             post_inst_guards: SecondaryMap::new(),
+            cfi_block_nums: SecondaryMap::new(),
+            cfi_inst_nums: SecondaryMap::new(),
             locations: SecondaryMap::new(),
             entry_diversions: EntryRegDiversions::new(),
             offsets: SecondaryMap::new(),
@@ -197,6 +206,8 @@ impl Function {
         self.block_guards.clear();
         self.pre_inst_guards.clear();
         self.post_inst_guards.clear();
+        self.cfi_block_nums.clear();
+        self.cfi_inst_nums.clear();
         self.locations.clear();
         self.entry_diversions.clear();
         self.offsets.clear();

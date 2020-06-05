@@ -14,6 +14,7 @@ use crate::binemit::{
     TrapSink,
 };
 use crate::blade::do_blade;
+use crate::cfi_number_allocate::do_cfi_number_allocate;
 use crate::dce::do_dce;
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
@@ -38,7 +39,7 @@ use crate::unreachable_code::eliminate_unreachable_code;
 use crate::value_label::{build_value_labels_ranges, ComparableSourceLoc, ValueLabelsRanges};
 use crate::verifier::{verify_context, verify_locations, VerifierErrors, VerifierResult};
 use alloc::vec::Vec;
-use cranelift_spectre::settings::{get_spectre_pht_mitigation, SpectrePHTMitigation};
+use cranelift_spectre::settings::{get_spectre_mitigation, get_spectre_pht_mitigation, SpectreMitigation, SpectrePHTMitigation};
 use log::debug;
 
 /// Persistent data structures and compilation pipeline.
@@ -131,7 +132,11 @@ impl Context {
         traps: &mut dyn TrapSink,
         stackmaps: &mut dyn StackmapSink,
     ) -> CodegenResult<CodeInfo> {
-        let info = self.compile(isa, false)?;
+        if get_spectre_mitigation() != SpectreMitigation::NONE ||
+            get_spectre_pht_mitigation() != SpectrePHTMitigation::NONE {
+            panic!("Compile and emit was called. This has not been instrumented for spectre resistance");
+        }
+        let info = self.compile(isa, false, &mut 0)?;
         let old_len = mem.len();
         mem.resize(old_len + info.total_size as usize, 0);
         let new_info = unsafe {
@@ -152,6 +157,7 @@ impl Context {
         &mut self,
         isa: &dyn TargetIsa,
         can_be_indirectly_called: bool,
+        cfi_start_num: &mut u64,
     ) -> CodegenResult<CodeInfo> {
         let _tt = timing::compile();
         self.verify_if(isa)?;
@@ -196,7 +202,8 @@ impl Context {
             self.mach_compile_result = Some(result);
             Ok(info)
         } else {
-            if get_spectre_pht_mitigation() == SpectrePHTMitigation::BLADE {
+            let pht_mitigation = get_spectre_pht_mitigation();
+            if pht_mitigation == SpectrePHTMitigation::BLADE {
                 // We do this before regalloc.
                 // It's safe because blade doesn't need to consider register unspills as dangerous
                 // loads.
@@ -215,6 +222,11 @@ impl Context {
             if opt_level == OptLevel::SpeedAndSize {
                 self.shrink_instructions(isa)?;
             }
+
+            if pht_mitigation == SpectrePHTMitigation::CFI {
+                self.cfi_number_allocate(cfi_start_num)?;
+            }
+
             let result = self.relax_branches(isa, can_be_indirectly_called);
 
             debug!("Compiled:\n{}", self.func.display(isa));
@@ -453,6 +465,12 @@ impl Context {
     pub fn blade(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
         do_blade(&mut self.func, &self.cfg);
         self.verify_if(isa)
+    }
+
+    /// Perform the CFI numbering pass.
+    pub fn cfi_number_allocate(&mut self, start_num: &mut u64) -> CodegenResult<()> {
+        do_cfi_number_allocate(&mut self.func, start_num);
+        Ok(())
     }
 
     /// Perform the pht to btb pass to replace direct branches with cmov + indirect jump.
