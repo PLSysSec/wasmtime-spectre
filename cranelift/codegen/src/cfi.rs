@@ -1,23 +1,22 @@
 use crate::cursor::{Cursor, EncCursor, FuncCursor};
 use crate::ir;
-use crate::ir::InstBuilder;
 use crate::ir::function::Function;
 use crate::ir::instructions::Opcode;
+use crate::ir::InstBuilder;
 use crate::isa::TargetIsa;
 
-pub fn do_condbr_cfi(
-    func: &mut Function,
-    isa: &dyn TargetIsa,
-) {
+pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
     while let Some(block) = cur.next_block() {
         while let Some(inst) = cur.next_inst() {
             let opcode = cur.func.dfg[inst].opcode();
             match opcode {
                 Opcode::Brz | Opcode::Brnz => {
-                    let block1_label = cur.ins().iconst(ir::types::I32, 42);  // 42 standing in for the real label
-                    let block2_label = cur.ins().iconst(ir::types::I32, 54);  // 54 standing in for the real label
-                    let new_label = cur.ins().condbr_get_new_cfi_label(block1_label, block2_label);
+                    let block1_label = cur.ins().iconst(ir::types::I32, 42); // 42 standing in for the real label
+                    let block2_label = cur.ins().iconst(ir::types::I32, 54); // 54 standing in for the real label
+                    let new_label = cur
+                        .ins()
+                        .condbr_get_new_cfi_label(block1_label, block2_label);
                     let condition_var = cur.func.dfg.inst_args(inst)[0].clone();
                     let int_condition_var = if cur.func.dfg.value_type(condition_var).is_bool() {
                         cur.ins().bint(ir::types::I32, condition_var)
@@ -55,8 +54,8 @@ pub fn do_cfi_number_allocate(func: &mut Function, cfi_start_num: &mut u64) {
         while let Some(inst) = cur.next_inst() {
             let opcode = cur.func.dfg[inst].opcode();
 
-            if !opcode.is_terminator() &&
-                (opcode.is_call() || opcode.is_branch() || opcode.is_indirect_branch())
+            if !opcode.is_terminator()
+                && (opcode.is_call() || opcode.is_branch() || opcode.is_indirect_branch())
             {
                 cur.func.cfi_inst_nums[inst] = *cfi_start_num;
                 *cfi_start_num += 1;

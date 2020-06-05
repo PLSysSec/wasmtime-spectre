@@ -44,7 +44,9 @@ use std::vec::Vec;
 #[cfg(feature = "basic-blocks")]
 use crate::ir::{Ebb, Inst, Value, ValueList};
 
-use cranelift_spectre::settings::{get_spectre_mitigation, get_spectre_pht_mitigation, SpectreMitigation, SpectrePHTMitigation};
+use cranelift_spectre::settings::{
+    get_spectre_mitigation, get_spectre_pht_mitigation, SpectreMitigation, SpectrePHTMitigation,
+};
 
 fn spectre_resistance_on_func(
     cur: &mut FuncCursor,
@@ -65,15 +67,22 @@ fn spectre_resistance_on_func(
         if can_be_indirectly_called {
             let block = cur.current_block().unwrap();
             if cur.func.block_guards[block].len() == 0 {
-                let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(cur, divert);
-                let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(42, zero_heap, zero_stack);
+                let (zero_heap, zero_stack) =
+                    is_heap_or_stack_op_before_next_ctrl_flow(cur, divert);
+                let mut bytes =
+                    cranelift_spectre::inst::get_cfi_check_bytes(42, zero_heap, zero_stack);
                 cur.func.block_guards[block].append(&mut bytes);
             }
         }
     }
 }
 
-fn spectre_resistance_on_basic_block(cur: &mut FuncCursor, first_inst: &Inst, divert: &RegDiversions, is_first_block: bool) {
+fn spectre_resistance_on_basic_block(
+    cur: &mut FuncCursor,
+    first_inst: &Inst,
+    divert: &RegDiversions,
+    is_first_block: bool,
+) {
     let mitigation = get_spectre_mitigation();
     let pht_mitigation = get_spectre_pht_mitigation();
 
@@ -129,8 +138,8 @@ fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst, divert: &RegDiv
     }
 
     if pht_mitigation == SpectrePHTMitigation::CFI {
-        if !opcode.is_terminator() &&
-            (opcode.is_call() || opcode.is_branch() || opcode.is_indirect_branch())
+        if !opcode.is_terminator()
+            && (opcode.is_call() || opcode.is_branch() || opcode.is_indirect_branch())
             && cur.func.post_inst_guards[*inst].len() == 0
         {
             let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(cur, divert);
@@ -203,7 +212,10 @@ fn is_stack_op(func: &Function, in_regs: &[RegUnit], inst: Inst) -> bool {
 /// heap op, and the second indicates whether there's a stack op
 ///
 /// Preserves the cursor position.
-fn is_heap_or_stack_op_before_next_ctrl_flow(cur: &mut FuncCursor, divert: &RegDiversions) -> (bool, bool) {
+fn is_heap_or_stack_op_before_next_ctrl_flow(
+    cur: &mut FuncCursor,
+    divert: &RegDiversions,
+) -> (bool, bool) {
     let saved_cursor_position = cur.position();
     let mut found_heap_op = false;
     let mut found_stack_op = false;
@@ -214,7 +226,11 @@ fn is_heap_or_stack_op_before_next_ctrl_flow(cur: &mut FuncCursor, divert: &RegD
         found_heap_op |= is_heap_op(&cur.func, &in_regs, cur_inst);
         found_stack_op |= is_stack_op(&cur.func, &in_regs, cur_inst);
         let opcode = cur.func.dfg[cur_inst].opcode();
-        if opcode.is_terminator() || opcode.is_branch() || opcode.is_indirect_branch() || opcode.is_call() {
+        if opcode.is_terminator()
+            || opcode.is_branch()
+            || opcode.is_indirect_branch()
+            || opcode.is_call()
+        {
             // reached next control flow operation
             break;
         }
@@ -345,9 +361,8 @@ pub fn relax_branches(
                     cranelift_spectre::inst::get_endbranch().len() as u32
                 } else {
                     0
-                }
-                + (cur.func.pre_inst_guards[inst].len() as u32)
-                + (reg_clear_bytes_size as u32)
+                } + (cur.func.pre_inst_guards[inst].len() as u32)
+                    + (reg_clear_bytes_size as u32)
                     + if first_inst_in_block {
                         let block_inserts = if cur.func.block_lfence[block] {
                             cranelift_spectre::inst::get_lfence().len() as u32
@@ -382,8 +397,7 @@ pub fn relax_branches(
                     cranelift_spectre::inst::get_lfence().len() as u32
                 } else {
                     0
-                }
-                + (cur.func.post_inst_guards[inst].len() as u32);
+                } + (cur.func.post_inst_guards[inst].len() as u32);
                 offset += inst_size + post_insert_size;
                 first_inst_in_block = false;
                 first_inst_in_func = false;

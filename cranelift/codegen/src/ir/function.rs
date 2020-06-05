@@ -98,7 +98,7 @@ pub struct Function {
     /// Used for spectre resistance. What is the unique cfi label of this linear block
     pub cfi_block_nums: SecondaryMap<Block, u64>,
 
-    /// Used for spectre resistance. What is the unique cfi label of this linear block. 
+    /// Used for spectre resistance. What is the unique cfi label of this linear block.
     /// Some instructions mark the beginning of linear blocks
     pub cfi_inst_nums: SecondaryMap<Inst, u64>,
 

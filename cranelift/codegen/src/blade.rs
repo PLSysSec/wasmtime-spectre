@@ -376,7 +376,10 @@ fn build_blade_graph_for_func(func: &mut Function, cfg: &ControlFlowGraph) -> Bl
     }
 
     // add edges to mark function parameters as potentially transient
-    let entry_block = func.layout.entry_block().expect("Failed to find entry block");
+    let entry_block = func
+        .layout
+        .entry_block()
+        .expect("Failed to find entry block");
     for func_param in func.dfg.block_params(entry_block) {
         // parameters of the entry block == parameters of the function
         let param_node = bladenode_to_node_map[&BladeNode::ValueDef(*func_param)];

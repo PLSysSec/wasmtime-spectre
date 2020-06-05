@@ -26,8 +26,8 @@ use crate::licm::do_licm;
 use crate::loop_analysis::LoopAnalysis;
 use crate::machinst::MachCompileResult;
 use crate::nan_canonicalization::do_nan_canonicalization;
-use crate::postopt::do_postopt;
 use crate::pht_to_btb::do_pht_to_btb;
+use crate::postopt::do_postopt;
 use crate::redundant_reload_remover::RedundantReloadRemover;
 use crate::regalloc;
 use crate::result::CodegenResult;
@@ -39,7 +39,9 @@ use crate::unreachable_code::eliminate_unreachable_code;
 use crate::value_label::{build_value_labels_ranges, ComparableSourceLoc, ValueLabelsRanges};
 use crate::verifier::{verify_context, verify_locations, VerifierErrors, VerifierResult};
 use alloc::vec::Vec;
-use cranelift_spectre::settings::{get_spectre_mitigation, get_spectre_pht_mitigation, SpectreMitigation, SpectrePHTMitigation};
+use cranelift_spectre::settings::{
+    get_spectre_mitigation, get_spectre_pht_mitigation, SpectreMitigation, SpectrePHTMitigation,
+};
 use log::debug;
 
 /// Persistent data structures and compilation pipeline.
@@ -132,8 +134,9 @@ impl Context {
         traps: &mut dyn TrapSink,
         stackmaps: &mut dyn StackmapSink,
     ) -> CodegenResult<CodeInfo> {
-        if get_spectre_mitigation() != SpectreMitigation::NONE ||
-            get_spectre_pht_mitigation() != SpectrePHTMitigation::NONE {
+        if get_spectre_mitigation() != SpectreMitigation::NONE
+            || get_spectre_pht_mitigation() != SpectrePHTMitigation::NONE
+        {
             panic!("Compile and emit was called. This has not been instrumented for spectre resistance");
         }
         let info = self.compile(isa, false, &mut 0)?;
@@ -221,7 +224,7 @@ impl Context {
                     // we're inserting
                     self.condbr_cfi(isa)?;
                 }
-                _ => {},
+                _ => {}
             }
             self.regalloc(isa)?;
             self.prologue_epilogue(isa)?;

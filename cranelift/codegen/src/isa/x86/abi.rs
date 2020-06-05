@@ -358,7 +358,9 @@ pub fn allocatable_registers(triple: &Triple, flags: &shared_settings::Flags) ->
             regs.take(GPR, RU::r15 as RegUnit);
         }
 
-        if cranelift_spectre::settings::get_spectre_pht_mitigation() == cranelift_spectre::settings::SpectrePHTMitigation::CFI {
+        if cranelift_spectre::settings::get_spectre_pht_mitigation()
+            == cranelift_spectre::settings::SpectrePHTMitigation::CFI
+        {
             regs.take(GPR, RU::r14 as RegUnit);
         }
     }

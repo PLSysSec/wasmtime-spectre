@@ -1,7 +1,7 @@
-use crate::settings::{ SpectreSettings, SpectreMitigation, SpectrePHTMitigation};
-use std::thread_local;
+use crate::settings::{SpectreMitigation, SpectrePHTMitigation, SpectreSettings};
 use std::cell::RefCell;
 use std::mem::MaybeUninit;
+use std::thread_local;
 
 extern "C" {
     pub fn pthread_yield();

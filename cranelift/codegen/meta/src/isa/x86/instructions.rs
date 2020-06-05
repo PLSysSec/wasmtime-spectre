@@ -265,7 +265,9 @@ pub(crate) fn define(
     let block_label = &TypeVar::new(
         "block_label",
         "A CFI block label",
-        TypeSetBuilder::new().ints(CFI_LABEL_SIZE_BITS .. CFI_LABEL_SIZE_BITS).build(),
+        TypeSetBuilder::new()
+            .ints(CFI_LABEL_SIZE_BITS..CFI_LABEL_SIZE_BITS)
+            .build(),
     );
     let block1_label = &Operand::new("block1_label", block_label);
     let block2_label = &Operand::new("block2_label", block_label);

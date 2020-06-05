@@ -1,7 +1,7 @@
 use crate::cursor::{Cursor, FuncCursor};
 use crate::flowgraph::ControlFlowGraph;
-use crate::ir::{self, Function, JumpTableData};
 use crate::ir::instructions::BranchInfo;
+use crate::ir::{self, Function, JumpTableData};
 
 use crate::ir::InstBuilder;
 
@@ -37,7 +37,7 @@ fn to_debug(t: &ir::types::Type) -> String {
     use std::fmt::Write;
     let mut buf = String::new();
     buf.write_fmt(format_args!("{:?}", t))
-       .expect("a Debug implementation returned an error unexpectedly");
+        .expect("a Debug implementation returned an error unexpectedly");
     buf.shrink_to_fit();
     buf
 }
@@ -45,31 +45,27 @@ fn to_debug(t: &ir::types::Type) -> String {
 fn convert_branch_to_table(cur: &mut FuncCursor, cfg: &mut ControlFlowGraph) -> bool {
     let inst = cur.current_inst().unwrap();
     let opcode = cur.func.dfg[inst].opcode();
-    if opcode == ir::Opcode::Brif ||
-        opcode == ir::Opcode::Brff ||
-        opcode == ir::Opcode::BrIcmp {
+    if opcode == ir::Opcode::Brif || opcode == ir::Opcode::Brff || opcode == ir::Opcode::BrIcmp {
         let _a = 1;
     }
     if !(opcode == ir::Opcode::Brnz || opcode == ir::Opcode::Brz) {
         panic!("Unsupported opcode for btb to pht: {:?}", opcode);
     }
 
-    let args : Vec<_> = cur.func.dfg.inst_args(inst).iter().cloned().collect();
+    let args: Vec<_> = cur.func.dfg.inst_args(inst).iter().cloned().collect();
 
     let vv = args[0].clone();
     let t = cur.func.dfg.value_type(vv);
     let _t_str = to_debug(&t);
 
     let (br_block, jump_args) = match cur.func.dfg.analyze_branch(inst) {
-        BranchInfo::SingleDest(dest, jump_args) => {
-            (dest, jump_args)
-        }
+        BranchInfo::SingleDest(dest, jump_args) => (dest, jump_args),
         _ => {
             panic!("Unexpected branch info");
         }
     };
 
-    let jump_args : Vec<ir::Value> = jump_args.iter().cloned().collect();
+    let jump_args: Vec<ir::Value> = jump_args.iter().cloned().collect();
 
     // Move remaining instructions to new block
     cur.next_inst().unwrap();
