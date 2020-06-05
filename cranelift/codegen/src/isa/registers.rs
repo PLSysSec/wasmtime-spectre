@@ -202,10 +202,17 @@ impl RegClassData {
     /// If the pinned register is used, is the given regunit the pinned register of this class?
     #[inline]
     pub fn is_pinned_reg(&self, enabled: bool, regunit: RegUnit) -> bool {
-        enabled
+        let heap_pinned = enabled
             && self
                 .pinned_reg
-                .map_or(false, |pinned_reg| pinned_reg == regunit)
+                .map_or(false, |pinned_reg| pinned_reg == regunit);
+        let other_pinned =
+            if cranelift_spectre::settings::get_spectre_pht_mitigation() == cranelift_spectre::settings::SpectrePHTMitigation::CFI {
+                regunit == self.info.parse_regunit("r14").unwrap()
+            } else {
+                false
+            };
+        heap_pinned || other_pinned
     }
 
     /// Calculate the index of the register inside the class.

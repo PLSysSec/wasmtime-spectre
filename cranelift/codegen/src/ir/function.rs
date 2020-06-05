@@ -86,6 +86,10 @@ pub struct Function {
     /// Avoid bounds checks for these jump tables. Used the pht to btb conversion which converts direct branches to switch tables
     pub brtable_no_bounds_check: SecondaryMap<Inst, bool>,
 
+    /// Marked
+    pub marked: SecondaryMap<Inst, bool>,
+
+
     /// Location assigned to every value.
     pub locations: ValueLocations,
 
@@ -152,6 +156,7 @@ impl Function {
             replacement: SecondaryMap::new(),
             registers_to_truncate: SecondaryMap::new(),
             brtable_no_bounds_check: SecondaryMap::new(),
+            marked: SecondaryMap::new(),
             locations: SecondaryMap::new(),
             entry_diversions: EntryRegDiversions::new(),
             offsets: SecondaryMap::new(),
@@ -182,6 +187,7 @@ impl Function {
         self.replacement.clear();
         self.registers_to_truncate.clear();
         self.brtable_no_bounds_check.clear();
+        self.marked.clear();
         self.locations.clear();
         self.entry_diversions.clear();
         self.offsets.clear();

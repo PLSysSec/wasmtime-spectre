@@ -433,23 +433,35 @@ fn define_moves(e: &mut PerCpuModeEncodings, shared_defs: &SharedDefinitions, r:
     let copy_special = shared.by_name("copy_special");
     let copy_to_ssa = shared.by_name("copy_to_ssa");
     let get_pinned_reg = shared.by_name("get_pinned_reg");
+    let get_pinned_cf_reg = shared.by_name("get_pinned_cf_reg");
+    let get_pinned_stack_reg = shared.by_name("get_pinned_stack_reg");
+    let cfi_zero_stack_reg = shared.by_name("cfi_zero_stack_reg");
+    let allocate_reg = shared.by_name("allocate_reg");
     let iconst = shared.by_name("iconst");
     let ireduce = shared.by_name("ireduce");
     let regmove = shared.by_name("regmove");
     let sextend = shared.by_name("sextend");
     let set_pinned_reg = shared.by_name("set_pinned_reg");
+    let set_pinned_cf_reg = shared.by_name("set_pinned_cf_reg");
+    let set_pinned_stack_reg = shared.by_name("set_pinned_stack_reg");
     let uextend = shared.by_name("uextend");
 
     // Shorthands for recipes.
     let rec_copysp = r.template("copysp");
     let rec_furm_reg_to_ssa = r.template("furm_reg_to_ssa");
     let rec_get_pinned_reg = r.recipe("get_pinned_reg");
+    let rec_get_pinned_cf_reg = r.recipe("get_pinned_cf_reg");
+    let rec_get_pinned_stack_reg = r.recipe("get_pinned_stack_reg");
+    let rec_cfi_zero_stack_reg = r.recipe("cfi_zero_stack_reg");
+    let rec_allocate_reg = r.recipe("allocate_reg");
     let rec_null = r.recipe("null");
     let rec_pu_id = r.template("pu_id");
     let rec_pu_id_bool = r.template("pu_id_bool");
     let rec_pu_iq = r.template("pu_iq");
     let rec_rmov = r.template("rmov");
     let rec_set_pinned_reg = r.template("set_pinned_reg");
+    let rec_set_pinned_cf_reg = r.template("set_pinned_cf_reg");
+    let rec_set_pinned_stack_reg = r.template("set_pinned_stack_reg");
     let rec_u_id = r.template("u_id");
     let rec_u_id_z = r.template("u_id_z");
     let rec_umr = r.template("umr");
@@ -462,6 +474,30 @@ fn define_moves(e: &mut PerCpuModeEncodings, shared_defs: &SharedDefinitions, r:
     e.enc_x86_64(
         set_pinned_reg.bind(I64),
         rec_set_pinned_reg.opcodes(&MOV_STORE).rex().w(),
+    );
+
+    e.enc64_rec(get_pinned_cf_reg.bind(I64), rec_get_pinned_cf_reg, 0);
+    e.enc_x86_64(
+        set_pinned_cf_reg.bind(I64),
+        rec_set_pinned_cf_reg.opcodes(&MOV_STORE).rex().w(),
+    );
+
+    e.enc64_rec(get_pinned_stack_reg.bind(I64), rec_get_pinned_stack_reg, 0);
+    e.enc_x86_64(
+        set_pinned_stack_reg.bind(I64),
+        rec_set_pinned_stack_reg.opcodes(&MOV_STORE).rex().w(),
+    );
+
+    e.enc64_rec(
+        cfi_zero_stack_reg.bind(I64),
+        rec_cfi_zero_stack_reg,
+        0
+    );
+
+    e.enc64_rec(
+        allocate_reg.bind(I64),
+        rec_allocate_reg,
+        0
     );
 
     e.enc_i32_i64(copy, rec_umr.opcodes(&MOV_STORE));

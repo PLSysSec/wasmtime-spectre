@@ -1422,6 +1422,82 @@ pub(crate) fn define(
         .other_side_effects(true),
     );
 
+    ig.push(
+        Inst::new(
+            "get_pinned_cf_reg",
+            r#"
+            Gets the content of the pinned cf register, when it's enabled.
+        "#,
+            &formats.nullary,
+        )
+        .operands_out(vec![addr])
+        .other_side_effects(true),
+    );
+
+    ig.push(
+        Inst::new(
+            "set_pinned_cf_reg",
+            r#"
+        Sets the content of the pinned cf register, when it's enabled.
+        "#,
+            &formats.unary,
+        )
+        .operands_in(vec![addr])
+        .other_side_effects(true),
+    );
+
+    ig.push(
+        Inst::new(
+            "get_pinned_stack_reg",
+            r#"
+            Gets the content of the pinned stack register.
+        "#,
+            &formats.nullary,
+        )
+        .operands_out(vec![addr])
+        .other_side_effects(true),
+    );
+
+    ig.push(
+        Inst::new(
+            "set_pinned_stack_reg",
+            r#"
+        Sets the content of the pinned stack register.
+        "#,
+            &formats.unary,
+        )
+        .operands_in(vec![addr])
+        .other_side_effects(true),
+    );
+
+    let cfi_val = &Operand::new("cfi_val", Int);
+    let zero = &Operand::new("zero", Int);
+    ig.push(
+        Inst::new(
+            "cfi_zero_stack_reg",
+            r#"
+            Zeroes the stack register if bad values.
+        "#,
+            &formats.binary,
+        )
+        .operands_in(vec![cfi_val, zero])
+    );
+
+    let reg_val = &Operand::new("x", iB);
+
+    ig.push(
+        Inst::new(
+            "allocate_reg",
+            r#"
+        Allocate a register for some operation
+        "#,
+            &formats.unary,
+        )
+        .operands_in(vec![reg_val])
+        .other_side_effects(true),
+    );
+
+
     let TableOffset = &TypeVar::new(
         "TableOffset",
         "An unsigned table offset",

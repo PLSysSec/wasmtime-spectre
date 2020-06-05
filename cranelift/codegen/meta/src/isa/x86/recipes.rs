@@ -427,6 +427,8 @@ pub(crate) fn define<'shared>(
     let reg_rcx = Register::new(gpr, regs.regunit_by_name(gpr, "rcx"));
     let reg_rdx = Register::new(gpr, regs.regunit_by_name(gpr, "rdx"));
     let reg_r15 = Register::new(gpr, regs.regunit_by_name(gpr, "r15"));
+    let reg_r14 = Register::new(gpr, regs.regunit_by_name(gpr, "r14"));
+    let reg_rsp = Register::new(gpr, regs.regunit_by_name(gpr, "rsp"));
 
     // Stack operand with a 32-bit signed displacement from either RBP or RSP.
     let stack_gpr32 = Stack::new(gpr);
@@ -478,6 +480,76 @@ pub(crate) fn define<'shared>(
                     modrm_rr(r15, in_reg0, sink);
                 "#,
             ),
+    );
+
+    recipes.add_recipe(
+        EncodingRecipeBuilder::new("get_pinned_cf_reg", &formats.nullary, 0)
+            .clobbers_flags(false)
+            .operands_out(vec![reg_r14])
+            .emit(""),
+    );
+    // umr with a fixed register output that's r14.
+    recipes.add_template_recipe(
+        EncodingRecipeBuilder::new("set_pinned_cf_reg", &formats.unary, 1)
+            .operands_in(vec![gpr])
+            .clobbers_flags(false)
+            .emit(
+                r#"
+                    let r14 = RU::r14.into();
+                    {{PUT_OP}}(bits, rex2(r14, in_reg0), sink);
+                    modrm_rr(r14, in_reg0, sink);
+                "#,
+            ),
+    );
+
+    recipes.add_recipe(
+        EncodingRecipeBuilder::new("get_pinned_stack_reg", &formats.nullary, 0)
+            .clobbers_flags(false)
+            .operands_out(vec![reg_rsp])
+            .emit(""),
+    );
+    // umr with a fixed register output that's rsp.
+    recipes.add_template_recipe(
+        EncodingRecipeBuilder::new("set_pinned_stack_reg", &formats.unary, 1)
+            .operands_in(vec![gpr])
+            .clobbers_flags(false)
+            .emit(
+                r#"
+                    let rsp = RU::rsp.into();
+                    {{PUT_OP}}(bits, rex2(rsp, in_reg0), sink);
+                    modrm_rr(rsp, in_reg0, sink);
+                "#,
+            ),
+    );
+
+    recipes.add_recipe(
+        EncodingRecipeBuilder::new("cfi_zero_stack_reg", &formats.binary, 7)
+            .operands_in(vec![gpr, gpr])
+            .clobbers_flags(true)
+            .emit(
+                r#"
+                    // cmp r14, in_reg0
+                    let cmp_bytes = cranelift_spectre::inst::get_cmp_r14_bytes(in_reg0.into());
+                    // cmovne rsp, in_reg1
+                    let cmovne_bytes = cranelift_spectre::inst::get_cmovne_rsp_bytes(in_reg1.into());
+
+                    cmp_bytes.iter().for_each(|b| sink.put1(*b));
+                    cmovne_bytes.iter().for_each(|b| sink.put1(*b));
+                "#,
+            ),
+    );
+
+    recipes.add_recipe(
+        EncodingRecipeBuilder::new("allocate_reg", &formats.unary, 3)
+            .operands_in(vec![gpr])
+            .operands_out(vec![0])
+            .clobbers_flags(false)
+            .emit(r#"
+            // cmp r14, in_reg0
+            let cmp_bytes = cranelift_spectre::inst::get_cmp_r14_bytes(in_reg0.into());
+
+            cmp_bytes.iter().for_each(|b| sink.put1(*b));
+        "#),
     );
 
     // No-op fills, created by late-stage redundant-fill removal.

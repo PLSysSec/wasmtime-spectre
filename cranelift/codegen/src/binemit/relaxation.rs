@@ -45,7 +45,9 @@ use std::vec::Vec;
 #[cfg(feature = "basic-blocks")]
 use crate::ir::{Ebb, Inst, Value, ValueList};
 
-use cranelift_spectre::settings::{get_spectre_mitigation, SpectreMitigation};
+use cranelift_spectre::settings::{
+    get_spectre_mitigation, SpectreMitigation, SpectrePHTMitigation,
+};
 
 fn spectre_resistance_on_func(
     cur: &mut FuncCursor,
@@ -72,6 +74,13 @@ fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst, divert: &RegDiv
     let opcode = cur.func.dfg[*inst].opcode();
     let _format = opcode.format();
     let mitigation = get_spectre_mitigation();
+    // let pht_mitigation = get_spectre_pht_mitigation();
+
+    if cur.func.marked[*inst] {
+        let args = cur.func.dfg[*inst].arguments(&cur.func.dfg.value_lists);
+        let _in_regs = get_registers(&cur, &divert, args);
+        let _a = 1;
+    }
 
     match mitigation {
         SpectreMitigation::STRAWMAN => {
@@ -103,6 +112,10 @@ fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst, divert: &RegDiv
         }
         _ => {}
     }
+
+    // if pht_mitigation == SpectrePHTMitigation::CFI {
+    //     do_cfi_register_clears(cur, divert, inst);
+    // }
 }
 
 fn get_registers(cur: &FuncCursor, divert: &RegDiversions, values: &[Value]) -> Vec<RegUnit> {
@@ -116,6 +129,51 @@ fn get_registers(cur: &FuncCursor, divert: &RegDiversions, values: &[Value]) -> 
     }
     regs
 }
+
+fn is_heap_op(in_regs: &[RegUnit], format: &InstructionFormat) -> bool {
+    // any load store that uses the sandbox heap is a "heap op"
+    match format {
+        InstructionFormat::Load { .. } | InstructionFormat::LoadComplex { .. } => {
+            if in_regs.len() <= 1 {
+                false
+            } else {
+                let first_reg: u16 = in_regs[in_regs.len() - 2].into();
+                first_reg == 15
+            }
+        }
+        InstructionFormat::Store { .. } | InstructionFormat::StoreComplex { .. } => {
+            if in_regs.len() <= 2 {
+                false
+            } else {
+                let first_reg: u16 = in_regs[in_regs.len() - 2].into();
+                first_reg == 15
+            }
+        }
+        _ => false,
+    }
+}
+
+// fn is_stack_op(in_regs: &[RegUnit], format: &InstructionFormat) {
+//     match format {
+//         InstructionFormat::Load { .. } | InstructionFormat::LoadComplex { .. } => {
+//             if in_regs.len() <= 1 {
+//                 false
+//             } else {
+//                 let first_reg: u16 = in_regs[in_regs.len() - 2].into();
+//                 first_reg == 4
+//             }
+//         }
+//         InstructionFormat::Store { .. } | InstructionFormat::StoreComplex { .. } => {
+//             if in_regs.len() <= 2 {
+//                 false
+//             } else {
+//                 let first_reg: u16 = in_regs[in_regs.len() - 2].into();
+//                 first_reg == 4
+//             }
+//         }
+//         _ => false,
+//     }
+// }
 
 fn get_pinned_base_heap_index_registers(
     cur: &FuncCursor,
@@ -131,28 +189,6 @@ fn get_pinned_base_heap_index_registers(
     let args = cur.func.dfg[*inst].arguments(&cur.func.dfg.value_lists);
     let in_regs = get_registers(&cur, &divert, args);
 
-    let is_heap_op = |in_regs: &[RegUnit], format: &InstructionFormat| {
-        // any load store that uses the sandbox heap is a "heap op"
-        match format {
-            InstructionFormat::Load { .. } | InstructionFormat::LoadComplex { .. } => {
-                if in_regs.len() <= 1 {
-                    false
-                } else {
-                    let first_reg: u16 = in_regs[in_regs.len() - 2].into();
-                    first_reg == 15
-                }
-            }
-            InstructionFormat::Store { .. } | InstructionFormat::StoreComplex { .. } => {
-                if in_regs.len() <= 2 {
-                    false
-                } else {
-                    let first_reg: u16 = in_regs[in_regs.len() - 2].into();
-                    first_reg == 15
-                }
-            }
-            _ => false,
-        }
-    };
     let get_heap_index_regs = |in_regs: &[RegUnit]| {
         // for now, we just pick the last arg as all inst seems to have the format
         // loaded_val = load(r_heapbase, r_index)
@@ -168,6 +204,22 @@ fn get_pinned_base_heap_index_registers(
 
     return regs;
 }
+
+// fn do_cfi_register_clears(cur: &FuncCursor, divert: &RegDiversions, inst: &Inst) {
+//     let args = cur.func.dfg[*inst].arguments(&cur.func.dfg.value_lists);
+//     let in_regs = get_registers(&cur, &divert, args);
+
+//     let opcode = cur.func.dfg[*inst].opcode();
+//     let format = opcode.format();
+
+//     let block = cur.func.layout.inst_block(*inst).unwrap();
+
+//     if is_heap_op(&in_regs, &format) {
+//         cur.func.block_clear_heap[block] = true;
+//     } else if is_stack_op(&in_regs, &format) {
+//         cur.func.block_clear_stack[block] = true;
+//     }
+// }
 
 /// Relax branches and compute the final layout of block headers in `func`.
 ///

@@ -14,6 +14,7 @@ use crate::binemit::{
     TrapSink,
 };
 use crate::blade::do_blade;
+use crate::cfi_reg_zero::do_cfi_reg_zero;
 use crate::dce::do_dce;
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
@@ -196,7 +197,8 @@ impl Context {
             self.mach_compile_result = Some(result);
             Ok(info)
         } else {
-            if get_spectre_pht_mitigation() == SpectrePHTMitigation::BLADE {
+            let pht_mitigation = get_spectre_pht_mitigation();
+            if pht_mitigation == SpectrePHTMitigation::BLADE {
                 // We do this before regalloc.
                 // It's safe because blade doesn't need to consider register unspills as dangerous
                 // loads.
@@ -206,6 +208,8 @@ impl Context {
                 // then even the pre-regalloc blade pass will see the def-use chain across the
                 // spill-unspill and insert a fence somewhere in the chain.
                 self.blade(isa)?;
+            } else if pht_mitigation == SpectrePHTMitigation::CFI {
+                self.cfi_reg_zero(isa)?;
             }
             self.regalloc(isa)?;
             self.prologue_epilogue(isa)?;
@@ -452,6 +456,12 @@ impl Context {
     /// Perform the Blade pass to insert lfences in appropriate places.
     pub fn blade(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
         do_blade(&mut self.func, &self.cfg);
+        self.verify_if(isa)
+    }
+    
+    /// Perform the Blade pass to insert lfences in appropriate places.
+    pub fn cfi_reg_zero(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
+        do_cfi_reg_zero(&mut self.func, isa);
         self.verify_if(isa)
     }
 

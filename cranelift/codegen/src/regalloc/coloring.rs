@@ -625,7 +625,8 @@ impl<'a> Context<'a> {
 
                 debug_assert!(
                     !self.is_pinned_reg(rc, reg)
-                        || self.cur.func.dfg[inst].opcode() == Opcode::GetPinnedReg,
+                        || self.cur.func.dfg[inst].opcode() == Opcode::GetPinnedReg
+                        || self.cur.func.dfg[inst].opcode() == Opcode::GetPinnedCfReg,
                     "pinned register may not be part of outputs for '{}'.",
                     self.cur.func.dfg[inst].opcode()
                 );
@@ -971,7 +972,14 @@ impl<'a> Context<'a> {
             }
 
             let ok = self.solver.add_fixed_output(rc, reg);
-            debug_assert!(ok, "Couldn't clear fixed output interference for {}", value);
+            let pinned_stack =
+            if cranelift_spectre::settings::get_spectre_pht_mitigation() == cranelift_spectre::settings::SpectrePHTMitigation::CFI {
+                reg == self.reginfo.parse_regunit("rsp").unwrap()
+            } else {
+                false
+            };
+
+            debug_assert!(ok || pinned_stack, "Couldn't clear fixed output interference for {}", value);
         }
         self.cur.func.locations[value] = ValueLoc::Reg(reg);
     }
