@@ -1357,6 +1357,7 @@ fn define_alu(
     let ushr_imm = shared.by_name("ushr_imm");
     let x86_bsf = x86.by_name("x86_bsf");
     let x86_bsr = x86.by_name("x86_bsr");
+    let condbr_get_new_cfi_label = x86.by_name("condbr_get_new_cfi_label");
 
     // Shorthands for recipes.
     let rec_bsf_and_bsr = r.template("bsf_and_bsr");
@@ -1372,6 +1373,7 @@ fn define_alu(
     let rec_setf_abcd = r.template("setf_abcd");
     let rec_seti_abcd = r.template("seti_abcd");
     let rec_urm = r.template("urm");
+    let rec_new_cfi_label = r.recipe("condbr_get_new_cfi_label");
 
     // Predicates shorthands.
     let use_popcnt = settings.predicate_by_name("use_popcnt");
@@ -1536,6 +1538,8 @@ fn define_alu(
     // Bit scan forwards and reverse
     e.enc_i32_i64(x86_bsf, rec_bsf_and_bsr.opcodes(&BIT_SCAN_FORWARD));
     e.enc_i32_i64(x86_bsr, rec_bsf_and_bsr.opcodes(&BIT_SCAN_REVERSE));
+
+    e.enc64_rec(condbr_get_new_cfi_label, rec_new_cfi_label, 0);
 
     // Comparisons
     e.enc_i32_i64(icmp, rec_icscc.opcodes(&CMP_REG));

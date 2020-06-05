@@ -261,6 +261,49 @@ pub(crate) fn define(
         .operands_out(vec![y, rflags]),
     );
 
+    const CFI_LABEL_SIZE_BITS: u16 = 64;
+    let block_label = &TypeVar::new(
+        "block_label",
+        "A CFI block label",
+        TypeSetBuilder::new().ints(CFI_LABEL_SIZE_BITS .. CFI_LABEL_SIZE_BITS).build(),
+    );
+    let block1_label = &Operand::new("block1_label", block_label);
+    let block2_label = &Operand::new("block2_label", block_label);
+    let cfi_label = &Operand::new("cfi_label", block_label);
+    ig.push(
+        Inst::new(
+            "condbr_get_new_cfi_label",
+            r#"
+    Get the new cfi label which should be `cmov`d into `r14` if the branch condition is true.
+
+    If `r14` is currently zero (we're currently on the right path), then this instruction
+    will set `r14` to `block1_label` and return `block2_label`.
+
+    If `r14` is currently nonzero (we're currently on the wrong path), then this instruction
+    will leave `r14` alone and also return `r14`.
+
+    The full sequence is:
+    ```
+            ----
+            | test r14, r14
+     this   | cmovz r14, block1_label
+     instr  |
+     uction | mov tmp, r14
+            | cmovz tmp, block2_label
+            ----
+
+            < set flags for branch condition >
+            cmovx r14, tmp
+            jx
+    ```
+    where this instruction takes `block1_label` and `block2_label` as inputs and returns `tmp`.
+    "#,
+            &formats.binary,
+        )
+        .operands_in(vec![block1_label, block2_label])
+        .operands_out(vec![cfi_label]),
+    );
+
     let uimm8 = &immediates.uimm8;
     let TxN = &TypeVar::new(
         "TxN",

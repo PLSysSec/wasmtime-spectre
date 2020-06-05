@@ -54,7 +54,7 @@ fn convert_branch_to_table(cur: &mut FuncCursor, cfg: &mut ControlFlowGraph) -> 
         panic!("Unsupported opcode for btb to pht: {:?}", opcode);
     }
 
-    let args : Vec<_> = cur.func.dfg[inst].arguments(&cur.func.dfg.value_lists).iter().cloned().collect();
+    let args : Vec<_> = cur.func.dfg.inst_args(inst).iter().cloned().collect();
 
     let vv = args[0].clone();
     let t = cur.func.dfg.value_type(vv);
@@ -96,7 +96,7 @@ fn convert_branch_to_table(cur: &mut FuncCursor, cfg: &mut ControlFlowGraph) -> 
     let zero = cur.ins().iconst(ir::types::I32, 0);
     let one = cur.ins().iconst(ir::types::I32, 1);
 
-    let flags_val = 
+    let flags_val =
         if opcode == ir::Opcode::Brnz || opcode == ir::Opcode::Brz {
             let variable = args[0].clone();
             let int_val = if t.is_bool() {

@@ -14,7 +14,7 @@ use crate::binemit::{
     TrapSink,
 };
 use crate::blade::do_blade;
-use crate::cfi_number_allocate::do_cfi_number_allocate;
+use crate::cfi::{do_cfi_number_allocate, do_condbr_cfi};
 use crate::dce::do_dce;
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
@@ -203,16 +203,25 @@ impl Context {
             Ok(info)
         } else {
             let pht_mitigation = get_spectre_pht_mitigation();
-            if pht_mitigation == SpectrePHTMitigation::BLADE {
-                // We do this before regalloc.
-                // It's safe because blade doesn't need to consider register unspills as dangerous
-                // loads.
-                // Register unspills can't have their address controlled by the attacker, so they
-                // can't directly produce dangerous transient data;
-                // and if transient data was stored there by a previous speculative register spill,
-                // then even the pre-regalloc blade pass will see the def-use chain across the
-                // spill-unspill and insert a fence somewhere in the chain.
-                self.blade(isa)?;
+            match pht_mitigation {
+                SpectrePHTMitigation::BLADE => {
+                    // We do this before regalloc.
+                    // It's safe because blade doesn't need to consider register unspills as dangerous
+                    // loads.
+                    // Register unspills can't have their address controlled by the attacker, so they
+                    // can't directly produce dangerous transient data;
+                    // and if transient data was stored there by a previous speculative register spill,
+                    // then even the pre-regalloc blade pass will see the def-use chain across the
+                    // spill-unspill and insert a fence somewhere in the chain.
+                    self.blade(isa)?;
+                }
+                SpectrePHTMitigation::CFI => {
+                    // We also do this before regalloc, because we actually need
+                    // regalloc to give us some temps for the new instructions
+                    // we're inserting
+                    self.condbr_cfi(isa)?;
+                }
+                _ => {},
             }
             self.regalloc(isa)?;
             self.prologue_epilogue(isa)?;
@@ -471,6 +480,12 @@ impl Context {
     pub fn cfi_number_allocate(&mut self, start_num: &mut u64) -> CodegenResult<()> {
         do_cfi_number_allocate(&mut self.func, start_num);
         Ok(())
+    }
+
+    /// Insert the appropriate CFI boilerplate before each conditional branch
+    pub fn condbr_cfi(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
+        do_condbr_cfi(&mut self.func, isa);
+        self.verify_if(isa)
     }
 
     /// Perform the pht to btb pass to replace direct branches with cmov + indirect jump.

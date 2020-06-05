@@ -227,3 +227,17 @@ pub fn get_cfi_check_bytes(label: u32, zero_r15: bool, zero_rsp: bool) -> Vec<u8
 
     return bytes;
 }
+
+pub fn get_condbr_new_cfi_label_bytes(block1_label_reg: u16, block2_label_reg: u16, out_reg: u16) -> Vec<u8> {
+    // See docs on the "condbr_get_new_cfi_label" instruction
+    // (notes in meta/src/isa/x86/instructions.rs)
+    // This should return the bytes for the following instructions:
+    // ```
+    // test r14, r14
+    // cmovz r14, block1_label
+    // mov out, r14
+    // cmovz out, block2_label
+    // ```
+
+    unimplemented!()
+}
