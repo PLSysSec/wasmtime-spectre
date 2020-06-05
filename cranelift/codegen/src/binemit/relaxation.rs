@@ -31,8 +31,7 @@ use crate::binemit::{CodeInfo, CodeOffset};
 use crate::cursor::{Cursor, FuncCursor};
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
-use crate::ir::{instructions::InstructionFormat, ValueLoc};
-use crate::ir::{Block, Function, Inst, InstructionData, Opcode, Value, ValueList};
+use crate::ir::{Block, Function, Inst, InstructionData, Opcode, Value, ValueList, ValueLoc};
 use crate::isa::{registers::RegUnit, EncInfo, TargetIsa};
 use crate::iterators::IteratorExtras;
 use crate::regalloc::RegDiversions;
@@ -50,6 +49,7 @@ use cranelift_spectre::settings::{get_spectre_mitigation, get_spectre_pht_mitiga
 fn spectre_resistance_on_func(
     cur: &mut FuncCursor,
     first_inst: &Inst,
+    divert: &RegDiversions,
     can_be_indirectly_called: bool,
 ) {
     let mitigation = get_spectre_mitigation();
@@ -65,15 +65,15 @@ fn spectre_resistance_on_func(
         if can_be_indirectly_called {
             let block = cur.current_block().unwrap();
             if cur.func.block_guards[block].len() == 0 {
-                let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(42);
+                let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(cur, divert);
+                let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(42, zero_heap, zero_stack);
                 cur.func.block_guards[block].append(&mut bytes);
             }
         }
     }
-
 }
 
-fn spectre_resistance_on_basic_block(cur: &mut FuncCursor, first_inst: &Inst, is_first_block: bool) {
+fn spectre_resistance_on_basic_block(cur: &mut FuncCursor, first_inst: &Inst, divert: &RegDiversions, is_first_block: bool) {
     let mitigation = get_spectre_mitigation();
     let pht_mitigation = get_spectre_pht_mitigation();
 
@@ -84,7 +84,8 @@ fn spectre_resistance_on_basic_block(cur: &mut FuncCursor, first_inst: &Inst, is
     if pht_mitigation == SpectrePHTMitigation::CFI {
         let block = cur.current_block().unwrap();
         if !is_first_block && cur.func.block_guards[block].len() == 0 {
-            let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(42);
+            let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(cur, divert);
+            let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(42, zero_heap, zero_stack);
             cur.func.block_guards[block].append(&mut bytes);
         }
     }
@@ -129,7 +130,8 @@ fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst, divert: &RegDiv
 
     if pht_mitigation == SpectrePHTMitigation::CFI {
         if !opcode.is_terminator() && opcode.is_call() && cur.func.post_inst_guards[*inst].len() == 0 {
-            let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(42);
+            let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(cur, divert);
+            let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(42, zero_heap, zero_stack);
             cur.func.post_inst_guards[*inst].append(&mut bytes);
         }
     }
@@ -147,6 +149,79 @@ fn get_registers(cur: &FuncCursor, divert: &RegDiversions, values: &[Value]) -> 
     regs
 }
 
+fn is_heap_op(func: &Function, in_regs: &[RegUnit], inst: Inst) -> bool {
+    let opcode = func.dfg[inst].opcode();
+
+    // any load store that uses the sandbox heap is a "heap op"
+
+    /* old implementation
+    match opcode.format() {
+        InstructionFormat::Load { .. } | InstructionFormat::LoadComplex { .. } => {
+            if in_regs.len() <= 1 {
+                false
+            } else {
+                let first_reg: u16 = in_regs[in_regs.len() - 2].into();
+                first_reg == 15
+            }
+        }
+        InstructionFormat::Store { .. } | InstructionFormat::StoreComplex { .. } => {
+            if in_regs.len() <= 2 {
+                false
+            } else {
+                let first_reg: u16 = in_regs[in_regs.len() - 2].into();
+                first_reg == 15
+            }
+        }
+        _ => false,
+    }
+    */
+    // new implementation
+    if opcode.can_load() || opcode.can_store() {
+        in_regs.iter().any(|&r| r == 15)
+    } else {
+        false
+    }
+}
+
+fn is_stack_op(func: &Function, in_regs: &[RegUnit], inst: Inst) -> bool {
+    let opcode = func.dfg[inst].opcode();
+    if opcode.can_load() || opcode.can_store() {
+        in_regs.iter().any(|&r| r == 4)
+    } else {
+        false
+    }
+}
+
+/// Is there a heap operation or stack operation somewhere between where the
+/// cursor is currently pointing (including the current instruction) and the next
+/// control flow instruction (call, cond/uncond branch, etc)?
+///
+/// Returns a pair of `bool`s, where the first `bool` indicates whether there's a
+/// heap op, and the second indicates whether there's a stack op
+///
+/// Preserves the cursor position.
+fn is_heap_or_stack_op_before_next_ctrl_flow(cur: &mut FuncCursor, divert: &RegDiversions) -> (bool, bool) {
+    let saved_cursor_position = cur.position();
+    let mut found_heap_op = false;
+    let mut found_stack_op = false;
+    loop {
+        let cur_inst = cur.current_inst().unwrap();
+        let args = cur.func.dfg.inst_args(cur_inst);
+        let in_regs = get_registers(cur, &divert, args);
+        found_heap_op |= is_heap_op(&cur.func, &in_regs, cur_inst);
+        found_stack_op |= is_stack_op(&cur.func, &in_regs, cur_inst);
+        let opcode = cur.func.dfg[cur_inst].opcode();
+        if opcode.is_terminator() || opcode.is_branch() || opcode.is_indirect_branch() || opcode.is_call() {
+            // reached next control flow operation
+            break;
+        }
+        cur.next_inst();
+    }
+    // Restore the cursor position and return
+    cur.set_position(saved_cursor_position);
+    return (found_heap_op, found_stack_op);
+}
+
 fn get_pinned_base_heap_index_registers(
     cur: &FuncCursor,
     divert: &RegDiversions,
@@ -155,34 +230,9 @@ fn get_pinned_base_heap_index_registers(
     let _rets = cur.func.dfg.inst_results(*inst);
     let _out_regs = get_registers(&cur, &divert, _rets);
 
-    let opcode = cur.func.dfg[*inst].opcode();
-    let format = opcode.format();
-
-    let args = cur.func.dfg[*inst].arguments(&cur.func.dfg.value_lists);
+    let args = cur.func.dfg.inst_args(*inst);
     let in_regs = get_registers(&cur, &divert, args);
 
-    let is_heap_op = |in_regs: &[RegUnit], format: &InstructionFormat| {
-        // any load store that uses the sandbox heap is a "heap op"
-        match format {
-            InstructionFormat::Load { .. } | InstructionFormat::LoadComplex { .. } => {
-                if in_regs.len() <= 1 {
-                    false
-                } else {
-                    let first_reg: u16 = in_regs[in_regs.len() - 2].into();
-                    first_reg == 15
-                }
-            }
-            InstructionFormat::Store { .. } | InstructionFormat::StoreComplex { .. } => {
-                if in_regs.len() <= 2 {
-                    false
-                } else {
-                    let first_reg: u16 = in_regs[in_regs.len() - 2].into();
-                    first_reg == 15
-                }
-            }
-            _ => false,
-        }
-    };
     let get_heap_index_regs = |in_regs: &[RegUnit]| {
         // for now, we just pick the last arg as all inst seems to have the format
         // loaded_val = load(r_heapbase, r_index)
@@ -190,7 +240,7 @@ fn get_pinned_base_heap_index_registers(
         vec![in_regs.last().unwrap().clone()]
     };
 
-    let regs = if is_heap_op(&in_regs, &format) {
+    let regs = if is_heap_op(&cur.func, &in_regs, *inst) {
         get_heap_index_regs(&in_regs)
     } else {
         vec![]
@@ -271,10 +321,10 @@ pub fn relax_branches(
                 let enc = cur.func.encodings[inst];
 
                 if first_inst_in_func {
-                    spectre_resistance_on_func(&mut cur, &inst, can_be_indirectly_called);
+                    spectre_resistance_on_func(&mut cur, &inst, &divert, can_be_indirectly_called);
                 }
                 if first_inst_in_block {
-                    spectre_resistance_on_basic_block(&mut cur, &inst, first_inst_in_func);
+                    spectre_resistance_on_basic_block(&mut cur, &inst, &divert, first_inst_in_func);
                 }
 
                 spectre_resistance_on_inst(&mut cur, &inst, &divert);

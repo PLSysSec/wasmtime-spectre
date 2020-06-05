@@ -207,18 +207,23 @@ pub fn get_cmovnz_from_r14(reg: u16) -> &'static [u8] {
     }
 }
 
+/// `label`: CFI label to compare against
+/// `zero_r15`: whether to zero `r15` if the CFI label is wrong
+/// `zero_rsp`: whether to zero `rsp` if the CFI label is wrong
+pub fn get_cfi_check_bytes(label: u32, zero_r15: bool, zero_rsp: bool) -> Vec<u8> {
+    if !zero_r15 && !zero_rsp {
+        // if we're not zeroing anything, we don't even need to check the label
+        return Vec::new();
+    }
 
-pub fn get_cfi_check_bytes(amt: u32) -> Vec<u8> {
+    let mut bytes = get_sub_const_bytes(14, label);
+    bytes.extend_from_slice(get_test_bytes(14));
+    if zero_r15 {
+        bytes.extend_from_slice(get_cmovnz_from_r14(15));
+    }
+    if zero_rsp {
+        bytes.extend_from_slice(get_cmovnz_from_r14(4));
+    }
 
-    let b1 = get_sub_const_bytes(14, amt);
-    let b2 = get_test_bytes(14);
-    let b3 = get_cmovnz_from_r14(15);
-    let b4 = get_cmovnz_from_r14(4);
-
-    let mut ret = Vec::new();
-    ret.extend_from_slice(&b1);
-    ret.extend_from_slice(&b2);
-    ret.extend_from_slice(&b3);
-    ret.extend_from_slice(&b4);
-    return ret;
+    return bytes;
 }
