@@ -45,7 +45,7 @@ use std::vec::Vec;
 #[cfg(feature = "basic-blocks")]
 use crate::ir::{Ebb, Inst, Value, ValueList};
 
-use cranelift_spectre::settings::{get_spectre_mitigation, SpectreMitigation};
+use cranelift_spectre::settings::{get_spectre_mitigation, get_spectre_pht_mitigation, SpectreMitigation, SpectrePHTMitigation};
 
 fn spectre_resistance_on_func(
     cur: &mut FuncCursor,
@@ -59,12 +59,34 @@ fn spectre_resistance_on_func(
             cur.func.pre_lfence[*first_inst] = true;
         }
     }
+
+    let pht_mitigation = get_spectre_pht_mitigation();
+    if pht_mitigation == SpectrePHTMitigation::CFI {
+        if can_be_indirectly_called {
+            let block = cur.current_block().unwrap();
+            if cur.func.block_guards[block].len() == 0 {
+                let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(42);
+                cur.func.block_guards[block].append(&mut bytes);
+            }
+        }
+    }
+
 }
 
-fn spectre_resistance_on_basic_block(cur: &mut FuncCursor, first_inst: &Inst) {
+fn spectre_resistance_on_basic_block(cur: &mut FuncCursor, first_inst: &Inst, is_first_block: bool) {
     let mitigation = get_spectre_mitigation();
+    let pht_mitigation = get_spectre_pht_mitigation();
+
     if mitigation == SpectreMitigation::STRAWMAN {
         cur.func.pre_lfence[*first_inst] = true;
+    }
+
+    if pht_mitigation == SpectrePHTMitigation::CFI {
+        let block = cur.current_block().unwrap();
+        if !is_first_block && cur.func.block_guards[block].len() == 0 {
+            let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(42);
+            cur.func.block_guards[block].append(&mut bytes);
+        }
     }
 }
 
@@ -72,6 +94,7 @@ fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst, divert: &RegDiv
     let opcode = cur.func.dfg[*inst].opcode();
     let _format = opcode.format();
     let mitigation = get_spectre_mitigation();
+    let pht_mitigation = get_spectre_pht_mitigation();
 
     match mitigation {
         SpectreMitigation::STRAWMAN => {
@@ -102,6 +125,13 @@ fn spectre_resistance_on_inst(cur: &mut FuncCursor, inst: &Inst, divert: &RegDiv
             cur.func.registers_to_truncate[*inst] = heap_index_registers;
         }
         _ => {}
+    }
+
+    if pht_mitigation == SpectrePHTMitigation::CFI {
+        if !opcode.is_terminator() && opcode.is_call() && cur.func.post_inst_guards[*inst].len() == 0 {
+            let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(42);
+            cur.func.post_inst_guards[*inst].append(&mut bytes);
+        }
     }
 }
 
@@ -244,7 +274,7 @@ pub fn relax_branches(
                     spectre_resistance_on_func(&mut cur, &inst, can_be_indirectly_called);
                 }
                 if first_inst_in_block {
-                    spectre_resistance_on_basic_block(&mut cur, &inst);
+                    spectre_resistance_on_basic_block(&mut cur, &inst, first_inst_in_func);
                 }
 
                 spectre_resistance_on_inst(&mut cur, &inst, &divert);
@@ -262,7 +292,9 @@ pub fn relax_branches(
                     cranelift_spectre::inst::get_endbranch().len() as u32
                 } else {
                     0
-                } + (reg_clear_bytes_size as u32)
+                }
+                + (cur.func.pre_inst_guards[inst].len() as u32)
+                + (reg_clear_bytes_size as u32)
                     + if first_inst_in_block {
                         let block_inserts = if cur.func.block_lfence[block] {
                             cranelift_spectre::inst::get_lfence().len() as u32
@@ -272,7 +304,7 @@ pub fn relax_branches(
                             cranelift_spectre::inst::get_endbranch().len() as u32
                         } else {
                             0
-                        };
+                        } + cur.func.block_guards[block].len() as u32;
                         block_inserts
                     } else {
                         0
@@ -297,7 +329,8 @@ pub fn relax_branches(
                     cranelift_spectre::inst::get_lfence().len() as u32
                 } else {
                     0
-                };
+                }
+                + (cur.func.post_inst_guards[inst].len() as u32);
                 offset += inst_size + post_insert_size;
                 first_inst_in_block = false;
                 first_inst_in_func = false;

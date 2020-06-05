@@ -32,7 +32,8 @@ pub enum SpectreMitigation {
 pub enum SpectrePHTMitigation {
     NONE,
     BLADE,
-    PHTTOBTB
+    PHTTOBTB,
+    CFI,
 }
 
 pub fn get_default_pht_protection(

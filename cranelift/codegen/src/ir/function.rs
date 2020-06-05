@@ -86,6 +86,15 @@ pub struct Function {
     /// Avoid bounds checks for these jump tables. Used the pht to btb conversion which converts direct branches to switch tables
     pub brtable_no_bounds_check: SecondaryMap<Inst, bool>,
 
+    /// Used for spectre resistance. What instructions to use to guard a linear block.
+    pub block_guards: SecondaryMap<Block, Vec<u8>>,
+
+    /// Used for spectre resistance. What instructions to use to guard an instruction.
+    pub pre_inst_guards: SecondaryMap<Inst, Vec<u8>>,
+
+    /// Used for spectre resistance. What instructions to use to guard after the instruction.
+    pub post_inst_guards: SecondaryMap<Inst, Vec<u8>>,
+
     /// Location assigned to every value.
     pub locations: ValueLocations,
 
@@ -152,6 +161,9 @@ impl Function {
             replacement: SecondaryMap::new(),
             registers_to_truncate: SecondaryMap::new(),
             brtable_no_bounds_check: SecondaryMap::new(),
+            block_guards: SecondaryMap::new(),
+            pre_inst_guards: SecondaryMap::new(),
+            post_inst_guards: SecondaryMap::new(),
             locations: SecondaryMap::new(),
             entry_diversions: EntryRegDiversions::new(),
             offsets: SecondaryMap::new(),
@@ -182,6 +194,9 @@ impl Function {
         self.replacement.clear();
         self.registers_to_truncate.clear();
         self.brtable_no_bounds_check.clear();
+        self.block_guards.clear();
+        self.pre_inst_guards.clear();
+        self.post_inst_guards.clear();
         self.locations.clear();
         self.entry_diversions.clear();
         self.offsets.clear();

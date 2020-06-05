@@ -20,6 +20,7 @@ fn do_block_inserts(fmt: &mut Formatter) {
         fmt.line("lfence_bytes.iter().for_each(|b| sink.put1(*b));");
     });
     fmt.line("}");
+    fmt.line("func.block_guards[block].iter().for_each(|b| sink.put1(*b));");
 }
 
 fn do_pre_inst_inserts(fmt: &mut Formatter) {
@@ -35,6 +36,7 @@ fn do_pre_inst_inserts(fmt: &mut Formatter) {
         fmt.line("lfence_bytes.iter().for_each(|b| sink.put1(*b));");
     });
     fmt.line("}");
+    fmt.line("func.pre_inst_guards[inst].iter().for_each(|b| sink.put1(*b));");
 
     fmt.line("let registers_to_truncate = &func.registers_to_truncate[inst];");
     fmt.line("registers_to_truncate.iter().for_each(|r| {");
@@ -52,6 +54,7 @@ fn do_post_inst_inserts(fmt: &mut Formatter) {
         fmt.line("lfence_bytes.iter().for_each(|b| sink.put1(*b));");
     });
     fmt.line("}");
+    fmt.line("func.post_inst_guards[inst].iter().for_each(|b| sink.put1(*b));");
 }
 
 fn do_inst_replacement(fmt: &mut Formatter) {
