@@ -122,7 +122,7 @@ impl<'a> Context<'a> {
     fn visit_terminator_branch(&mut self, inst: Inst) {
         let inst_data = &self.cur.func.dfg[inst];
         let opcode = inst_data.opcode();
-        if opcode != Opcode::Jump && opcode != Opcode::Fallthrough && opcode != Opcode::JumpCfi && opcode != Opcode::FallthroughCfi {
+        if opcode != Opcode::Jump && opcode != Opcode::Fallthrough {
             // This opcode is ignored as it does not have any block parameters.
             if opcode != Opcode::IndirectJumpTableBr {
                 debug_assert!(!opcode.is_branch())
@@ -132,7 +132,6 @@ impl<'a> Context<'a> {
 
         let target = match inst_data {
             InstructionData::Jump { destination, .. } => destination,
-            // InstructionData::Branch { destination, .. } => destination,
             _ => panic!(
                 "Unexpected instruction {} in visit_terminator_branch",
                 self.cur.display_inst(inst)

@@ -75,10 +75,7 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
         let opcode = cur.func.dfg[term].opcode();
         match opcode {
             Opcode::Jump | Opcode::Fallthrough => {
-                // can only add only jumps after another branch, so add the value earlier in the block
-                cur.goto_first_inst(block);
                 let new_label = cur.ins().iconst(types::I64, 42); // 42 standing in for the real label
-                cur.goto_last_inst(block);
                 let brinfo = cur.func.dfg.analyze_branch(term);
                 let (dest, varargs) = match brinfo {
                     BranchInfo::SingleDest(dest, varargs) => (dest, varargs),
