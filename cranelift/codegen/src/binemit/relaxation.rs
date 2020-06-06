@@ -148,7 +148,7 @@ fn spectre_resistance_on_inst(isa: &dyn TargetIsa, cur: &mut FuncCursor, inst: &
             cur.func.post_inst_guards[*inst].append(&mut bytes);
         }
 
-        if opcode == Opcode::Brz || opcode == Opcode::Brnz {
+        if opcode == Opcode::BrzCfi || opcode == Opcode::BrnzCfi {
             let cfi_label_inst = get_previous_cfi_label_inst(cur);
             let br_block = match cur.func.dfg.analyze_branch(*inst) {
                 BranchInfo::SingleDest(dest, _) => dest,
