@@ -210,35 +210,31 @@ pub fn get_mov_from_r14(reg: u16) -> &'static [u8] {
 
 // cmovz reg1, reg2
 pub fn get_cmovz(reg1: u16, reg2: u16) -> Vec<u8> {
-    // REX.W + 0F 44 /r
-    // 0x4 (1(0|1)0(0|1));
-    let rexw: u8 = 0x48;
-    let reg1_bit = if reg1 > R_RDI { 0b100 } else { 0 };
-    let reg2_bit = if reg2 > R_RDI { 0b001 } else { 0 };
-
-    let byte1 = rexw | reg1_bit | reg2_bit;
-    let byte2: u8 = 0x0f;
-    let byte3: u8 = 0x44;
-
-    let reg_chooser: u8 = 0b11000000;
-    let reg1_choose: u8 = get_reg_bits(reg1);
-    let reg2_choose: u8 = get_reg_bits(reg2);
-    let byte4 = reg_chooser | (reg1_choose << 3) | reg2_choose;
-
-    return vec![byte1, byte2, byte3, byte4];
+    get_cmov(reg1, reg2, true)
 }
 
 // cmovnz reg1, reg2
 pub fn get_cmovnz(reg1: u16, reg2: u16) -> Vec<u8> {
+    get_cmov(reg1, reg2, false)
+}
+
+/// `z`: if `true`, then generate a `cmovz` opcode;
+/// else, generate a `cmovnz` opcode
+fn get_cmov(reg1: u16, reg2: u16, z: bool) -> Vec<u8> {
+    // cmovz:
+    // REX.W + 0F 44 /r
+    // cmovnz:
     // REX.W + 0F 45 /r
-    // 0x4 (1(0|1)0(0|1));
+    //
+    // where REX.W is 0x4 (1(0|1)0(0|1))
+
     let rexw: u8 = 0x48;
     let reg1_bit = if reg1 > R_RDI { 0b100 } else { 0 };
     let reg2_bit = if reg2 > R_RDI { 0b001 } else { 0 };
 
     let byte1 = rexw | reg1_bit | reg2_bit;
     let byte2: u8 = 0x0f;
-    let byte3: u8 = 0x45;
+    let byte3: u8 = if z { 0x44 } else { 0x45 };
 
     let reg_chooser: u8 = 0b11000000;
     let reg1_choose: u8 = get_reg_bits(reg1);
