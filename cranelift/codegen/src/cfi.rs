@@ -26,27 +26,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                     let varargs: Vec<Value> = varargs.to_vec(); // end immutable borrow of cur
                     let condition = cur.func.dfg.inst_args(inst)[0];
 
-                    /* probably not going to use this
-                    let int_condition = if cur.func.dfg.value_type(condition).is_bool() {
-                        cur.ins().bint(types::I32, condition)
-                    } else {
-                        condition
-                    };
-                    let flags_val = cur.ins().ifcmp_imm(int_condition, 0);
-                    let condcode = match opcode {
-                        Opcode::Brz => ir::condcodes::IntCC::Equal,
-                        Opcode::Brnz => ir::condcodes::IntCC::NotEqual,
-                        _ => panic!("Shouldn't ever get here"),
-                    };
-
-                    // here we need an instruction to cmov new_label into r14 based on the current flags
-                    // r14 = cur.ins().selectif(types::I32, condcode, flags_val, new_label, r14)
-
-                    // now the existing br instruction based on the same current flags and `condcode`
-                    // which we never removed, so hopefully it's in the right place?
-                    */
-
-                    // instead, we replace the branch instruction with the corresponding CFI branch instruction
+                    // replace the branch instruction with the corresponding CFI branch instruction
                     match opcode {
                         Opcode::Brz => { cur.ins().brz_cfi(condition, new_label, dest, &varargs[..]); }
                         Opcode::Brnz => { cur.ins().brnz_cfi(condition, new_label, dest, &varargs[..]); }

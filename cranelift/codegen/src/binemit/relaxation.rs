@@ -162,7 +162,24 @@ fn spectre_resistance_on_inst(
                 }
             };
             let br_block_label = cur.func.cfi_block_nums[br_block].unwrap();
-            let fallthrough_block_label = cur.func.cfi_inst_nums[*inst].unwrap();
+            let fallthrough_block_label = {
+                let next_inst = get_next_inst(cur);
+                match next_inst.map(|next_inst| cur.func.dfg[next_inst].opcode()) {
+                    Some(Opcode::Jump) | Some(Opcode::Fallthrough) => {
+                        // label of jump or fallthrough target
+                        match cur.func.dfg.analyze_branch(next_inst.expect("Already checked that it's a Some here")) {
+                            BranchInfo::SingleDest(dest, ..) => {
+                                cur.func.cfi_block_nums[dest].unwrap()
+                            }
+                            _ => panic!("Expected Jump/Fallthrough to be SingleDest"),
+                        }
+                    }
+                    _ => {
+                        // actual label of the fallthrough block
+                        cur.func.cfi_inst_nums[*inst].unwrap()
+                    }
+                }
+            };
 
             let args = cur.func.dfg.inst_args(cfi_label_inst);
             assert!(args.len() == 2, "Expected two CFI labels");
@@ -183,6 +200,14 @@ fn spectre_resistance_on_inst(
             cur.func.dfg.replace(original_label1_inst).iconst(types::I64, fallthrough_block_label as i64);
         }
     }
+}
+
+/// "Peeks" the next instruction without actually moving the cursor
+fn get_next_inst(cur: &mut FuncCursor) -> Option<Inst> {
+    let saved_position = cur.position();
+    let inst = cur.next_inst();
+    cur.set_position(saved_position);
+    inst
 }
 
 fn get_previous_cfi_label_inst(cur: &mut FuncCursor) -> Inst {
