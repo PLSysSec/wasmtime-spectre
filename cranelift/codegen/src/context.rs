@@ -14,7 +14,7 @@ use crate::binemit::{
     TrapSink,
 };
 use crate::blade::do_blade;
-use crate::cfi::{do_br_cfi, do_cfi_number_allocate, do_condbr_cfi};
+use crate::cfi::{do_br_cfi, do_cfi_add_checks, do_cfi_number_allocate, do_condbr_cfi};
 use crate::dce::do_dce;
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
@@ -238,6 +238,7 @@ impl Context {
 
             if pht_mitigation == SpectrePHTMitigation::CFI {
                 self.cfi_number_allocate(cfi_start_num)?;
+                self.cfi_add_checks(isa, can_be_indirectly_called)?;
             }
 
             let result = self.relax_branches(isa, can_be_indirectly_called);
@@ -484,6 +485,12 @@ impl Context {
     pub fn cfi_number_allocate(&mut self, start_num: &mut u64) -> CodegenResult<()> {
         do_cfi_number_allocate(&mut self.func, start_num);
         Ok(())
+    }
+
+    /// Actually add CFI checks
+    pub fn cfi_add_checks(&mut self, isa: &dyn TargetIsa, can_be_indirectly_called: bool) -> CodegenResult<()> {
+        do_cfi_add_checks(&mut self.func, isa, can_be_indirectly_called);
+        self.verify_if(isa)
     }
 
     /// Insert the appropriate CFI boilerplate before each conditional branch

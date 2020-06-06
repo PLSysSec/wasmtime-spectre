@@ -1,9 +1,11 @@
 use crate::cursor::{Cursor, EncCursor, FuncCursor};
+use crate::ir::{Inst, InstBuilder, Value, ValueDef, ValueLoc, types};
 use crate::ir::function::Function;
 use crate::ir::instructions::{BranchInfo, Opcode};
-use crate::ir::{types, InstBuilder, Value};
-use crate::isa::TargetIsa;
+use crate::isa::{registers::RegUnit, TargetIsa};
 use alloc::vec::Vec;
+
+use crate::regalloc::RegDiversions;
 
 pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
@@ -98,4 +100,242 @@ pub fn do_cfi_number_allocate(func: &mut Function, cfi_start_num: &mut u64) {
             }
         }
     }
+}
+
+
+pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indirectly_called: bool) {
+    let mut cur = FuncCursor::new(func);
+    let mut divert = RegDiversions::new();
+
+    let mut first_inst_in_func = true;
+    let mut first_inst_in_block;
+
+    while let Some(block) = cur.next_block() {
+        divert.at_block(&cur.func.entry_diversions, block);
+
+        first_inst_in_block = true;
+
+        while let Some(inst) = cur.next_inst() {
+            if first_inst_in_func {
+                cfi_func_checks(isa, &mut cur, &divert, can_be_indirectly_called);
+            }
+            if first_inst_in_block {
+                cfi_block_checks(isa, &mut cur, &divert, first_inst_in_func);
+            }
+
+            cfi_inst_checks(isa, &mut cur, &divert, &inst);
+
+            first_inst_in_block = false;
+            first_inst_in_func = false;
+        }
+    }
+}
+
+fn cfi_func_checks(
+    isa: &dyn TargetIsa,
+    cur: &mut FuncCursor,
+    divert: &RegDiversions,
+    can_be_indirectly_called: bool,
+) {
+    if can_be_indirectly_called {
+        let block = cur.current_block().unwrap();
+        let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
+        let label = cur.func.cfi_block_nums[block].unwrap();
+        let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, zero_heap, zero_stack);
+        cur.func.block_guards[block].append(&mut bytes);
+    }
+}
+
+fn cfi_block_checks(isa: &dyn TargetIsa, cur: &mut FuncCursor, divert: &RegDiversions, is_first_block: bool) {
+    let block = cur.current_block().unwrap();
+    if !is_first_block && cur.func.block_guards[block].len() == 0 {
+        let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
+        // if cur.func.cfi_block_nums[block].is_none() {
+        //     let _a = 1;
+        // }
+        let label = cur.func.cfi_block_nums[block].unwrap_or(42);
+        let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, zero_heap, zero_stack);
+        cur.func.block_guards[block].append(&mut bytes);
+    }
+}
+
+fn cfi_inst_checks(
+    isa: &dyn TargetIsa,
+    cur: &mut FuncCursor,
+    divert: &RegDiversions,
+    inst: &Inst,
+) {
+    let opcode = cur.func.dfg[*inst].opcode();
+    let _format = opcode.format();
+
+    if !opcode.is_terminator()
+        && (opcode.is_call() || opcode.is_branch() || opcode.is_indirect_branch())
+        && cur.func.post_inst_guards[*inst].len() == 0
+    {
+        let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
+        let label = cur.func.cfi_inst_nums[*inst].unwrap();
+        let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, zero_heap, zero_stack);
+        cur.func.post_inst_guards[*inst].append(&mut bytes);
+    }
+
+    if opcode == Opcode::BrzCfi || opcode == Opcode::BrnzCfi {
+        let cfi_label_inst = get_previous_cfi_label_inst(cur);
+        let br_block = match cur.func.dfg.analyze_branch(*inst) {
+            BranchInfo::SingleDest(dest, _) => dest,
+            _ => {
+                panic!("Unexpected branch info");
+            }
+        };
+        let br_block_label = cur.func.cfi_block_nums[br_block].unwrap();
+        let fallthrough_block_label = {
+            let next_inst = get_next_inst(cur);
+            match next_inst.map(|next_inst| cur.func.dfg[next_inst].opcode()) {
+                Some(Opcode::Jump) | Some(Opcode::Fallthrough) => {
+                    // label of jump or fallthrough target
+                    match cur.func.dfg.analyze_branch(next_inst.expect("Already checked that it's a Some here")) {
+                        BranchInfo::SingleDest(dest, ..) => {
+                            cur.func.cfi_block_nums[dest].unwrap()
+                        }
+                        _ => panic!("Expected Jump/Fallthrough to be SingleDest"),
+                    }
+                }
+                _ => {
+                    // actual label of the fallthrough block
+                    cur.func.cfi_inst_nums[*inst].unwrap()
+                }
+            }
+        };
+
+        let args = cur.func.dfg.inst_args(cfi_label_inst);
+        assert!(args.len() == 2, "Expected two CFI labels");
+
+        let original_label0_source = cur.func.dfg.value_def(args[0]);
+        let original_label1_source = cur.func.dfg.value_def(args[1]);
+
+        let original_label0_inst = match original_label0_source {
+            ValueDef::Result(inst, _) => inst,
+            _ => panic!("Unexpected label source for CFI"),
+        };
+        let original_label1_inst = match original_label1_source {
+            ValueDef::Result(inst, _) => inst,
+            _ => panic!("Unexpected label source for CFI"),
+        };
+
+        cur.func.dfg.replace(original_label0_inst).iconst(types::I64, br_block_label as i64);
+        cur.func.dfg.replace(original_label1_inst).iconst(types::I64, fallthrough_block_label as i64);
+    }
+}
+
+
+fn get_previous_cfi_label_inst(cur: &mut FuncCursor) -> Inst {
+    // get prev inst which is opcode == Opcode::CondbrGetNewCfiLabel
+    // this should be in the same block, so only iterate in this block
+    let saved_cursor_position = cur.position();
+
+    let found = loop {
+        let cur_inst = cur.current_inst().unwrap();
+        let opcode = cur.func.dfg[cur_inst].opcode();
+        if opcode ==  Opcode::CondbrGetNewCfiLabel {
+            break cur_inst;
+        }
+        cur.prev_inst();
+    };
+
+    cur.set_position(saved_cursor_position);
+    return found;
+}
+
+/// "Peeks" the next instruction without actually moving the cursor
+fn get_next_inst(cur: &mut FuncCursor) -> Option<Inst> {
+    let saved_position = cur.position();
+    let inst = cur.next_inst();
+    cur.set_position(saved_position);
+    inst
+}
+
+fn get_registers(cur: &FuncCursor, divert: &RegDiversions, values: &[Value]) -> Vec<RegUnit> {
+    let mut regs = vec![];
+    for value in values {
+        let v = divert.get(*value, &cur.func.locations);
+        match v {
+            ValueLoc::Reg(r) => regs.push(r),
+            _ => (),
+        };
+    }
+    regs
+}
+
+fn is_heap_op(isa: &dyn TargetIsa, func: &Function, in_regs: &[RegUnit], inst: Inst) -> bool {
+    let opcode = func.dfg[inst].opcode();
+    let r15 = isa.register_info().parse_regunit("r15").unwrap();
+    if opcode.can_load() || opcode.can_store() {
+        in_regs.iter().any(|&r| r == r15)
+    } else {
+        false
+    }
+}
+
+fn is_stack_op(isa: &dyn TargetIsa, func: &Function, in_regs: &[RegUnit], inst: Inst) -> bool {
+    let opcode = func.dfg[inst].opcode();
+    let rsp = isa.register_info().parse_regunit("rsp").unwrap();
+    if opcode.can_load() || opcode.can_store() {
+        opcode == Opcode::X86Push
+            || opcode == Opcode::X86Pop
+            || opcode == Opcode::Spill
+            || opcode == Opcode::Fill
+            || opcode == Opcode::Regspill
+            || opcode == Opcode::Regfill
+            || in_regs.iter().any(|&r| r == rsp)
+    } else {
+        false
+    }
+}
+
+/// Is there a heap operation or stack operation somewhere between where the
+/// cursor is currently pointing (including the current instruction) and the next
+/// control flow instruction (call, cond/uncond branch, etc)?
+///
+/// Returns a pair of `bool`s, where the first `bool` indicates whether there's a
+/// heap op, and the second indicates whether there's a stack op
+///
+/// Preserves the cursor position.
+fn is_heap_or_stack_op_before_next_ctrl_flow(
+    isa: &dyn TargetIsa,
+    cur: &mut FuncCursor,
+    divert: &RegDiversions,
+) -> (bool, bool) {
+    let saved_cursor_position = cur.position();
+    let mut found_heap_op = false;
+    let mut found_stack_op = false;
+    loop {
+        let cur_inst = cur.current_inst().unwrap();
+        let args = cur.func.dfg.inst_args(cur_inst);
+        let in_regs = get_registers(cur, &divert, args);
+        let _rets = cur.func.dfg.inst_results(cur_inst);
+        let _out_regs = get_registers(&cur, &divert, _rets);
+        let _opcode = cur.func.dfg[cur_inst].opcode();
+
+        found_heap_op |= is_heap_op(isa, &cur.func, &in_regs, cur_inst);
+        found_stack_op |= is_stack_op(isa, &cur.func, &in_regs, cur_inst);
+
+        if found_heap_op {
+            let _a = 1;
+        }
+        if found_stack_op {
+            let _a = 1;
+        }
+        let opcode = cur.func.dfg[cur_inst].opcode();
+        if opcode.is_terminator()
+            || opcode.is_branch()
+            || opcode.is_indirect_branch()
+            || opcode.is_call()
+        {
+            // reached next control flow operation
+            break;
+        }
+        cur.next_inst();
+    }
+    // Restore the cursor position and return
+    cur.set_position(saved_cursor_position);
+    return (found_heap_op, found_stack_op);
 }
