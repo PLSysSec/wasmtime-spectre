@@ -100,7 +100,12 @@ fn spectre_resistance_on_basic_block(isa: &dyn TargetIsa, cur: &mut FuncCursor, 
     }
 }
 
-fn spectre_resistance_on_inst(isa: &dyn TargetIsa, cur: &mut FuncCursor, inst: &Inst, divert: &RegDiversions) {
+fn spectre_resistance_on_inst(
+    isa: &dyn TargetIsa,
+    cur: &mut FuncCursor,
+    inst: &Inst,
+    divert: &RegDiversions,
+) {
     let opcode = cur.func.dfg[*inst].opcode();
     let _format = opcode.format();
     let mitigation = get_spectre_mitigation();
@@ -224,7 +229,13 @@ fn is_stack_op(isa: &dyn TargetIsa, func: &Function, in_regs: &[RegUnit], inst: 
     let opcode = func.dfg[inst].opcode();
     let rsp = isa.register_info().parse_regunit("rsp").unwrap();
     if opcode.can_load() || opcode.can_store() {
-        opcode == Opcode::X86Push || opcode == Opcode::X86Pop || opcode == Opcode::Spill || in_regs.iter().any(|&r| r == rsp)
+        opcode == Opcode::X86Push
+            || opcode == Opcode::X86Pop
+            || opcode == Opcode::Spill
+            || opcode == Opcode::Fill
+            || opcode == Opcode::Regspill
+            || opcode == Opcode::Regfill
+            || in_regs.iter().any(|&r| r == rsp)
     } else {
         false
     }
@@ -238,7 +249,11 @@ fn is_stack_op(isa: &dyn TargetIsa, func: &Function, in_regs: &[RegUnit], inst: 
 /// heap op, and the second indicates whether there's a stack op
 ///
 /// Preserves the cursor position.
-fn is_heap_or_stack_op_before_next_ctrl_flow(isa: &dyn TargetIsa, cur: &mut FuncCursor, divert: &RegDiversions) -> (bool, bool) {
+fn is_heap_or_stack_op_before_next_ctrl_flow(
+    isa: &dyn TargetIsa,
+    cur: &mut FuncCursor,
+    divert: &RegDiversions,
+) -> (bool, bool) {
     let saved_cursor_position = cur.position();
     let mut found_heap_op = false;
     let mut found_stack_op = false;
