@@ -2814,7 +2814,7 @@ pub(crate) fn define<'shared>(
         EncodingRecipeBuilder::new(
             "condbr_get_new_cfi_label",
             &formats.binary,
-            0)
+            14)
         .operands_in(vec![gpr, gpr])
         .operands_out(vec![gpr])
         .clobbers_flags(true)

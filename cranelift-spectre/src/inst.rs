@@ -290,7 +290,12 @@ pub fn get_condbr_new_cfi_label_bytes(
     bytes.extend_from_slice(&get_cmovz(R_R14, block1_label_reg));
     bytes.extend_from_slice(get_mov_from_r14(out_reg));
     bytes.extend_from_slice(&get_cmovz(out_reg, block2_label_reg));
-
-    //unimplemented!()
-    Vec::new()
+    bytes
 }
+
+// pub fn get_uncondbr_new_cfi_label_bytes(block1_label_reg: u16) -> Vec<u8> {
+//     // mov out, block1_label
+//     let mut bytes = get_test_bytes(R_R14).to_vec();
+//     bytes.extend_from_slice(&get_cmovz(R_R14, block1_label_reg));
+//     bytes
+// }
