@@ -185,23 +185,17 @@ fn get_previous_cfi_label_inst(cur: &mut FuncCursor) -> Inst {
     // this should be in the same block, so only iterate in this block
     let saved_cursor_position = cur.position();
 
-    let mut found = None;
-    loop {
+    let found = loop {
         let cur_inst = cur.current_inst().unwrap();
         let opcode = cur.func.dfg[cur_inst].opcode();
         if opcode ==  Opcode::CondbrGetNewCfiLabel {
-            found = Some(cur_inst);
-            break;
+            break cur_inst;
         }
         cur.prev_inst();
-    }
-
-    if found.is_none() {
-        panic!("Could not find cfi label instruction associated with branch instruction");
-    }
+    };
 
     cur.set_position(saved_cursor_position);
-    return found.unwrap();
+    return found;
 }
 
 fn get_registers(cur: &FuncCursor, divert: &RegDiversions, values: &[Value]) -> Vec<RegUnit> {
@@ -657,6 +651,10 @@ fn relax_branch(
     isa: &dyn TargetIsa,
 ) -> CodeOffset {
     let inst = cur.current_inst().unwrap();
+    let _opcode = cur.func.dfg[inst].opcode();
+    let _format = _opcode.format();
+    let _enc = cur.func.encodings[inst];
+
     debug!(
         "Relaxing [{}] {} for {:#x}-{:#x} range",
         encinfo.display(cur.func.encodings[inst]),

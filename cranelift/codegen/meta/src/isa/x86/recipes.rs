@@ -3028,7 +3028,7 @@ pub(crate) fn define<'shared>(
         Template::new(
             EncodingRecipeBuilder::new("tjccb_cfi", &formats.branch_cfi, 1 + 2 + CMOV_SIZE)
                 .operands_in(vec![gpr, gpr])
-                .branch_range((3, 8))
+                .branch_range((3 + CMOV_SIZE, 8))
                 .emit(
                     r#"
                         // test r, r.
@@ -3079,7 +3079,7 @@ pub(crate) fn define<'shared>(
         Template::new(
             EncodingRecipeBuilder::new("tjccd_cfi", &formats.branch_cfi, 1 + 6 + CMOV_SIZE)
                 .operands_in(vec![gpr, gpr])
-                .branch_range((7, 32))
+                .branch_range((7 + CMOV_SIZE, 32))
                 .emit(
                     r#"
                         // test r, r.
@@ -3132,7 +3132,7 @@ pub(crate) fn define<'shared>(
         Template::new(
             EncodingRecipeBuilder::new("t8jccb_cfi", &formats.branch_cfi, 1 + 2 + CMOV_SIZE)
                 .operands_in(vec![gpr, gpr])
-                .branch_range((3, 8))
+                .branch_range((3 + CMOV_SIZE, 8))
                 .emit(
                     r#"
                     // test8 r, r.
@@ -3162,7 +3162,7 @@ pub(crate) fn define<'shared>(
         Template::new(
             EncodingRecipeBuilder::new("t8jccb_abcd", &formats.branch, 1 + 2)
                 .operands_in(vec![abcd])
-                .branch_range((3, 8))
+                .branch_range((3 + CMOV_SIZE, 8))
                 .emit(
                     r#"
                     // test8 r, r.
@@ -3182,7 +3182,7 @@ pub(crate) fn define<'shared>(
         Template::new(
             EncodingRecipeBuilder::new("t8jccb_abcd_cfi", &formats.branch_cfi, 1 + 2 + CMOV_SIZE)
                 .operands_in(vec![abcd, gpr])
-                .branch_range((3, 8))
+                .branch_range((3 + CMOV_SIZE, 8))
                 .emit(
                     r#"
                     // test8 r, r.
@@ -3233,7 +3233,7 @@ pub(crate) fn define<'shared>(
         Template::new(
             EncodingRecipeBuilder::new("t8jccd_cfi", &formats.branch_cfi, 1 + 6 + CMOV_SIZE)
                 .operands_in(vec![gpr, gpr])
-                .branch_range((7, 32))
+                .branch_range((7 + CMOV_SIZE, 32))
                 .emit(
                     r#"
                     // test8 r, r.
@@ -3285,7 +3285,7 @@ pub(crate) fn define<'shared>(
         Template::new(
             EncodingRecipeBuilder::new("t8jccd_abcd_cfi", &formats.branch_cfi, 1 + 6 + CMOV_SIZE)
                 .operands_in(vec![abcd, gpr])
-                .branch_range((7, 32))
+                .branch_range((7 + CMOV_SIZE, 32))
                 .emit(
                     r#"
                     // test8 r, r.
@@ -3339,7 +3339,7 @@ pub(crate) fn define<'shared>(
     recipes.add_template_recipe(
         EncodingRecipeBuilder::new("t8jccd_long_cfi", &formats.branch_cfi, 5 + 6 + CMOV_SIZE)
             .operands_in(vec![gpr, gpr])
-            .branch_range((11, 32))
+            .branch_range((11 + CMOV_SIZE, 32))
             .emit(
                 r#"
                     // test32 r, 0xff.
