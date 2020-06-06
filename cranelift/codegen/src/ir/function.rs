@@ -360,6 +360,7 @@ impl Function {
             if let Some(next) = inst_iter.next() {
                 match dfg[next].opcode() {
                     Opcode::Fallthrough | Opcode::Jump => (),
+                    Opcode::FallthroughCFI | Opcode::JumpCFI => (),
                     _ => return Err((next, "post-branch instruction not fallthrough or jump")),
                 }
             }

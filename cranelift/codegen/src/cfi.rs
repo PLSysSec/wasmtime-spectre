@@ -1,7 +1,7 @@
 use crate::cursor::{Cursor, EncCursor, FuncCursor};
 use crate::ir::function::Function;
 use crate::ir::instructions::{BranchInfo, Opcode};
-use crate::ir::{InstBuilder, Value, types};
+use crate::ir::{types, InstBuilder, Value};
 use crate::isa::TargetIsa;
 use alloc::vec::Vec;
 
@@ -23,7 +23,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                         BranchInfo::SingleDest(dest, varargs) => (dest, varargs),
                         _ => panic!("Expected Brz / Brnz to be a SingleDest"),
                     };
-                    let varargs: Vec<Value> = varargs.to_vec();  // end immutable borrow of cur
+                    let varargs: Vec<Value> = varargs.to_vec(); // end immutable borrow of cur
                     let condition = cur.func.dfg.inst_args(inst)[0];
 
                     /* probably not going to use this
@@ -48,15 +48,54 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
 
                     // instead, we replace the branch instruction with the corresponding CFI branch instruction
                     match opcode {
-                        Opcode::Brz => { cur.ins().brz_cfi(condition, new_label, dest, &varargs[..]); }
-                        Opcode::Brnz => { cur.ins().brnz_cfi(condition, new_label, dest, &varargs[..]); }
-                        _ => { panic!("Shouldn't ever get here"); },
+                        Opcode::Brz => {
+                            cur.ins().brz_cfi(condition, new_label, dest, &varargs[..]);
+                        }
+                        Opcode::Brnz => {
+                            cur.ins().brnz_cfi(condition, new_label, dest, &varargs[..]);
+                        }
+                        _ => {
+                            panic!("Shouldn't ever get here");
+                        }
                     }
                     cur.remove_inst();
                 }
                 Opcode::BrIcmp | Opcode::Brif | Opcode::Brff => unimplemented!(),
                 _ => {}
             }
+        }
+    }
+}
+
+pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
+    let mut cur: EncCursor = EncCursor::new(func, isa);
+    while let Some(block) = cur.next_block() {
+        cur.goto_last_inst(block);
+        let term = cur.current_inst().unwrap();
+        let opcode = cur.func.dfg[term].opcode();
+        match opcode {
+            Opcode::Jump | Opcode::Fallthrough => {
+                let new_label = cur.ins().iconst(types::I64, 42); // 42 standing in for the real label
+                let brinfo = cur.func.dfg.analyze_branch(term);
+                let (dest, varargs) = match brinfo {
+                    BranchInfo::SingleDest(dest, varargs) => (dest, varargs),
+                    _ => panic!("Expected Jump/Fallthrough to be a SingleDest"),
+                };
+                let varargs: Vec<Value> = varargs.to_vec(); // end immutable borrow of cur
+                match opcode {
+                    Opcode::Jump => {
+                        cur.ins().jump_cfi(dest, new_label, &varargs[..]);
+                    }
+                    Opcode::Fallthrough => {
+                        cur.ins().fallthrough_cfi(dest, new_label, &varargs[..]);
+                    }
+                    _ => {
+                        panic!("Shouldn't ever get here");
+                    }
+                }
+                cur.remove_inst();
+            }
+            _ => {}
         }
     }
 }

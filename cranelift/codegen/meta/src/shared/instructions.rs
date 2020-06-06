@@ -38,6 +38,33 @@ fn define_control_flow(
         .is_branch(true),
     );
 
+    const CFI_LABEL_SIZE_BITS: u16 = 64;
+    let block_label = &TypeVar::new(
+        "block_label",
+        "A CFI block label",
+        TypeSetBuilder::new()
+            .ints(CFI_LABEL_SIZE_BITS..CFI_LABEL_SIZE_BITS)
+            .build(),
+    );
+    let cfi_label = &Operand::new("cfi_label", block_label);
+
+    ig.push(
+        Inst::new(
+            "jump_cfi",
+            r#"
+        Jump, with CFI.
+
+        Unconditionally jump to a basic block, passing the specified
+        block arguments. The number and types of arguments must match the
+        destination block.
+        "#,
+            &formats.branch, // == jump_cfi
+        )
+        .operands_in(vec![block, cfi_label, args])
+        .is_terminator(true)
+        .is_branch(true),
+    );
+
     ig.push(
         Inst::new(
             "fallthrough",
@@ -58,6 +85,26 @@ fn define_control_flow(
         .is_branch(true),
     );
 
+    ig.push(
+        Inst::new(
+            "fallthrough_cfi",
+            r#"
+        Fall through to the next block, with CFI.
+
+        This is the same as `jump`, except the destination block must be
+        the next one in the layout.
+
+        Jumps are turned into fall-through instructions by the branch
+        relaxation pass. There is no reason to use this instruction outside
+        that pass.
+        "#,
+            &formats.branch, // == jump_cfi
+        )
+        .operands_in(vec![block, cfi_label, args])
+        .is_terminator(true)
+        .is_branch(true),
+    );
+
     let Testable = &TypeVar::new(
         "Testable",
         "A scalar boolean or integer type",
@@ -69,15 +116,6 @@ fn define_control_flow(
 
     {
         let c = &Operand::new("c", Testable).with_doc("Controlling value to test");
-        const CFI_LABEL_SIZE_BITS: u16 = 64;
-        let block_label = &TypeVar::new(
-            "block_label",
-            "A CFI block label",
-            TypeSetBuilder::new()
-                .ints(CFI_LABEL_SIZE_BITS..CFI_LABEL_SIZE_BITS)
-                .build(),
-        );
-        let cfi_label = &Operand::new("cfi_label", block_label);
 
         ig.push(
             Inst::new(
