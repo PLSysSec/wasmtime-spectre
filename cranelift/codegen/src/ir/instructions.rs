@@ -192,6 +192,11 @@ impl InstructionData {
                 destination,
                 ref args,
                 ..
+            }
+            | Self::BranchCFI {
+                destination,
+                ref args,
+                ..
             } => BranchInfo::SingleDest(destination, &args.as_slice(pool)[2..]),
             Self::BranchTable {
                 table, destination, ..
@@ -212,6 +217,7 @@ impl InstructionData {
         match *self {
             Self::Jump { destination, .. }
             | Self::Branch { destination, .. }
+            | Self::BranchCFI { destination, .. }
             | Self::BranchInt { destination, .. }
             | Self::BranchFloat { destination, .. }
             | Self::BranchIcmp { destination, .. } => Some(destination),
@@ -234,6 +240,10 @@ impl InstructionData {
                 ..
             }
             | Self::Branch {
+                ref mut destination,
+                ..
+            }
+            | Self::BranchCFI {
                 ref mut destination,
                 ..
             }

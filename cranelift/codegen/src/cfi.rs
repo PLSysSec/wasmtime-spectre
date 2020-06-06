@@ -1,29 +1,38 @@
 use crate::cursor::{Cursor, EncCursor, FuncCursor};
-use crate::ir;
 use crate::ir::function::Function;
-use crate::ir::instructions::Opcode;
-use crate::ir::InstBuilder;
+use crate::ir::instructions::{BranchInfo, Opcode};
+use crate::ir::{InstBuilder, Value, types};
 use crate::isa::TargetIsa;
+use alloc::vec::Vec;
 
 pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
-    while let Some(block) = cur.next_block() {
+    while let Some(_block) = cur.next_block() {
         while let Some(inst) = cur.next_inst() {
             let opcode = cur.func.dfg[inst].opcode();
             match opcode {
                 Opcode::Brz | Opcode::Brnz => {
-                    let block1_label = cur.ins().iconst(ir::types::I32, 42); // 42 standing in for the real label
-                    let block2_label = cur.ins().iconst(ir::types::I32, 54); // 54 standing in for the real label
+                    let block1_label = cur.ins().iconst(types::I64, 42); // 42 standing in for the real label
+                    let block2_label = cur.ins().iconst(types::I64, 54); // 54 standing in for the real label
                     let new_label = cur
                         .ins()
                         .condbr_get_new_cfi_label(block1_label, block2_label);
-                    let condition_var = cur.func.dfg.inst_args(inst)[0].clone();
-                    let int_condition_var = if cur.func.dfg.value_type(condition_var).is_bool() {
-                        cur.ins().bint(ir::types::I32, condition_var)
-                    } else {
-                        condition_var
+
+                    let brinfo = cur.func.dfg.analyze_branch(inst);
+                    let (dest, varargs) = match brinfo {
+                        BranchInfo::SingleDest(dest, varargs) => (dest, varargs),
+                        _ => panic!("Expected Brz / Brnz to be a SingleDest"),
                     };
-                    let flags_val = cur.ins().ifcmp_imm(int_condition_var, 0);
+                    let varargs: Vec<Value> = varargs.to_vec();  // end immutable borrow of cur
+                    let condition = cur.func.dfg.inst_args(inst)[0];
+
+                    /* probably not going to use this
+                    let int_condition = if cur.func.dfg.value_type(condition).is_bool() {
+                        cur.ins().bint(types::I32, condition)
+                    } else {
+                        condition
+                    };
+                    let flags_val = cur.ins().ifcmp_imm(int_condition, 0);
                     let condcode = match opcode {
                         Opcode::Brz => ir::condcodes::IntCC::Equal,
                         Opcode::Brnz => ir::condcodes::IntCC::NotEqual,
@@ -31,12 +40,21 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                     };
 
                     // here we need an instruction to cmov new_label into r14 based on the current flags
-                    // r14 = cur.ins().selectif(ir::types::I32, condcode, flags_val, new_label, r14)
+                    // r14 = cur.ins().selectif(types::I32, condcode, flags_val, new_label, r14)
 
                     // now the existing br instruction based on the same current flags and `condcode`
                     // which we never removed, so hopefully it's in the right place?
+                    */
+
+                    // instead, we replace the branch instruction with the corresponding CFI branch instruction
+                    match opcode {
+                        Opcode::Brz => { cur.ins().brz_cfi(condition, new_label, dest, &varargs[..]); }
+                        Opcode::Brnz => { cur.ins().brnz_cfi(condition, new_label, dest, &varargs[..]); }
+                        _ => { panic!("Shouldn't ever get here"); },
+                    }
+                    cur.remove_inst();
                 }
-                Opcode::BrIcmp | Opcode::Brif | Opcode::Brff => unimplemented!(),
+                // Opcode::BrIcmp | Opcode::Brif | Opcode::Brff => unimplemented!(),
                 _ => {}
             }
         }

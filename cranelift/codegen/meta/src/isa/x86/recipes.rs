@@ -2967,6 +2967,33 @@ pub(crate) fn define<'shared>(
         .inferred_rex_compute_size("size_with_inferred_rex_for_inreg0"),
     );
 
+    const CMOV_SIZE: u64 = 4;
+
+    recipes.add_template(
+        Template::new(
+            EncodingRecipeBuilder::new("tjccb_cfi", &formats.branch_cfi, 1 + 2 + CMOV_SIZE)
+                .operands_in(vec![gpr, gpr])
+                .branch_range((3, 8))
+                .emit(
+                    r#"
+                        // test r, r.
+                        {{PUT_OP}}((bits & 0xff00) | 0x85, rex2(in_reg0, in_reg0), sink);
+                        modrm_rr(in_reg0, in_reg0, sink);
+
+                        // cmovcc r14, in_reg1
+                        let bytes = cranelift_spectre::inst::get_cmovcc_to_r14(bits, in_reg1);
+                        bytes.iter().for_each(|&b| sink.put1(b));
+
+                        // Jcc instruction.
+                        sink.put1(bits as u8);
+                        disp1(destination, func, sink);
+                    "#,
+                ),
+            regs,
+        )
+        .inferred_rex_compute_size("size_with_inferred_rex_for_inreg0"),
+    );
+
     recipes.add_template(
         Template::new(
             EncodingRecipeBuilder::new("tjccd", &formats.branch, 1 + 6)
@@ -2977,6 +3004,32 @@ pub(crate) fn define<'shared>(
                         // test r, r.
                         {{PUT_OP}}((bits & 0xff00) | 0x85, rex2(in_reg0, in_reg0), sink);
                         modrm_rr(in_reg0, in_reg0, sink);
+                        // Jcc instruction.
+                        sink.put1(0x0f);
+                        sink.put1(bits as u8);
+                        disp4(destination, func, sink);
+                    "#,
+                ),
+            regs,
+        )
+        .inferred_rex_compute_size("size_with_inferred_rex_for_inreg0"),
+    );
+
+   recipes.add_template(
+        Template::new(
+            EncodingRecipeBuilder::new("tjccd_cfi", &formats.branch_cfi, 1 + 6 + CMOV_SIZE)
+                .operands_in(vec![gpr, gpr])
+                .branch_range((7, 32))
+                .emit(
+                    r#"
+                        // test r, r.
+                        {{PUT_OP}}((bits & 0xff00) | 0x85, rex2(in_reg0, in_reg0), sink);
+                        modrm_rr(in_reg0, in_reg0, sink);
+
+                        // cmovcc r14, in_reg1
+                        let bytes = cranelift_spectre::inst::get_cmovcc_to_r14(bits, in_reg1);
+                        bytes.iter().for_each(|&b| sink.put1(b));
+
                         // Jcc instruction.
                         sink.put1(0x0f);
                         sink.put1(bits as u8);
@@ -3010,6 +3063,31 @@ pub(crate) fn define<'shared>(
         .rex_kind(RecipePrefixKind::AlwaysEmitRex),
     );
 
+    let t8jccb_cfi = recipes.add_template(
+        Template::new(
+            EncodingRecipeBuilder::new("t8jccb_cfi", &formats.branch_cfi, 1 + 2 + CMOV_SIZE)
+                .operands_in(vec![gpr, gpr])
+                .branch_range((3, 8))
+                .emit(
+                    r#"
+                    // test8 r, r.
+                    {{PUT_OP}}((bits & 0xff00) | 0x84, rex2(in_reg0, in_reg0), sink);
+                    modrm_rr(in_reg0, in_reg0, sink);
+
+                    // cmovcc r14, in_reg1
+                    let bytes = cranelift_spectre::inst::get_cmovcc_to_r14(bits, in_reg1);
+                    bytes.iter().for_each(|&b| sink.put1(b));
+
+                    // Jcc instruction.
+                    sink.put1(bits as u8);
+                    disp1(destination, func, sink);
+                "#,
+                ),
+            regs,
+        )
+        .rex_kind(RecipePrefixKind::AlwaysEmitRex),
+    );
+
     recipes.add_template(
         Template::new(
             EncodingRecipeBuilder::new("t8jccb_abcd", &formats.branch, 1 + 2)
@@ -3030,6 +3108,31 @@ pub(crate) fn define<'shared>(
         .when_prefixed(t8jccb),
     );
 
+   recipes.add_template(
+        Template::new(
+            EncodingRecipeBuilder::new("t8jccb_abcd_cfi", &formats.branch_cfi, 1 + 2 + CMOV_SIZE)
+                .operands_in(vec![abcd, gpr])
+                .branch_range((3, 8))
+                .emit(
+                    r#"
+                    // test8 r, r.
+                    {{PUT_OP}}((bits & 0xff00) | 0x84, rex2(in_reg0, in_reg0), sink);
+                    modrm_rr(in_reg0, in_reg0, sink);
+
+                    // cmovcc r14, in_reg1
+                    let bytes = cranelift_spectre::inst::get_cmovcc_to_r14(bits, in_reg1);
+                    bytes.iter().for_each(|&b| sink.put1(b));
+
+                    // Jcc instruction.
+                    sink.put1(bits as u8);
+                    disp1(destination, func, sink);
+                "#,
+                ),
+            regs,
+        )
+        .when_prefixed(t8jccb_cfi),
+    );
+
     let t8jccd = recipes.add_template(
         Template::new(
             EncodingRecipeBuilder::new("t8jccd", &formats.branch, 1 + 6)
@@ -3040,6 +3143,32 @@ pub(crate) fn define<'shared>(
                     // test8 r, r.
                     {{PUT_OP}}((bits & 0xff00) | 0x84, rex2(in_reg0, in_reg0), sink);
                     modrm_rr(in_reg0, in_reg0, sink);
+                    // Jcc instruction.
+                    sink.put1(0x0f);
+                    sink.put1(bits as u8);
+                    disp4(destination, func, sink);
+                "#,
+                ),
+            regs,
+        )
+        .rex_kind(RecipePrefixKind::AlwaysEmitRex),
+    );
+
+    let t8jccd_cfi = recipes.add_template(
+        Template::new(
+            EncodingRecipeBuilder::new("t8jccd_cfi", &formats.branch_cfi, 1 + 6 + CMOV_SIZE)
+                .operands_in(vec![gpr, gpr])
+                .branch_range((7, 32))
+                .emit(
+                    r#"
+                    // test8 r, r.
+                    {{PUT_OP}}((bits & 0xff00) | 0x84, rex2(in_reg0, in_reg0), sink);
+                    modrm_rr(in_reg0, in_reg0, sink);
+
+                    // cmovcc r14, in_reg1
+                    let bytes = cranelift_spectre::inst::get_cmovcc_to_r14(bits, in_reg1);
+                    bytes.iter().for_each(|&b| sink.put1(b));
+
                     // Jcc instruction.
                     sink.put1(0x0f);
                     sink.put1(bits as u8);
@@ -3072,9 +3201,35 @@ pub(crate) fn define<'shared>(
         .when_prefixed(t8jccd),
     );
 
+    recipes.add_template(
+        Template::new(
+            EncodingRecipeBuilder::new("t8jccd_abcd_cfi", &formats.branch_cfi, 1 + 6 + CMOV_SIZE)
+                .operands_in(vec![abcd, gpr])
+                .branch_range((7, 32))
+                .emit(
+                    r#"
+                    // test8 r, r.
+                    {{PUT_OP}}((bits & 0xff00) | 0x84, rex2(in_reg0, in_reg0), sink);
+                    modrm_rr(in_reg0, in_reg0, sink);
+
+                    // cmovcc r14, in_reg1
+                    let bytes = cranelift_spectre::inst::get_cmovcc_to_r14(bits, in_reg1);
+                    bytes.iter().for_each(|&b| sink.put1(b));
+
+                    // Jcc instruction.
+                    sink.put1(0x0f);
+                    sink.put1(bits as u8);
+                    disp4(destination, func, sink);
+                "#,
+                ),
+            regs,
+        )
+        .when_prefixed(t8jccd_cfi),
+    );
+
     // Worst case test-and-branch recipe for brz.b1 and brnz.b1 in 32-bit mode.
     // The register allocator can't handle a branch instruction with constrained
-    // operands like the t8jccd_abcd above. This variant can accept the b1 opernd in
+    // operands like the t8jccd_abcd above. This variant can accept the b1 operand in
     // any register, but is is larger because it uses a 32-bit test instruction with
     // a 0xff immediate.
 
@@ -3088,6 +3243,29 @@ pub(crate) fn define<'shared>(
                     {{PUT_OP}}((bits & 0xff00) | 0xf7, rex1(in_reg0), sink);
                     modrm_r_bits(in_reg0, bits, sink);
                     sink.put4(0xff);
+                    // Jcc instruction.
+                    sink.put1(0x0f);
+                    sink.put1(bits as u8);
+                    disp4(destination, func, sink);
+                "#,
+            ),
+    );
+
+    recipes.add_template_recipe(
+        EncodingRecipeBuilder::new("t8jccd_long_cfi", &formats.branch_cfi, 5 + 6 + CMOV_SIZE)
+            .operands_in(vec![gpr, gpr])
+            .branch_range((11, 32))
+            .emit(
+                r#"
+                    // test32 r, 0xff.
+                    {{PUT_OP}}((bits & 0xff00) | 0xf7, rex1(in_reg0), sink);
+                    modrm_r_bits(in_reg0, bits, sink);
+                    sink.put4(0xff);
+
+                    // cmovcc r14, in_reg1
+                    let bytes = cranelift_spectre::inst::get_cmovcc_to_r14(bits, in_reg1);
+                    bytes.iter().for_each(|&b| sink.put1(b));
+
                     // Jcc instruction.
                     sink.put1(0x0f);
                     sink.put1(bits as u8);

@@ -488,6 +488,9 @@ impl Context {
     /// Insert the appropriate CFI boilerplate before each conditional branch
     pub fn condbr_cfi(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
         do_condbr_cfi(&mut self.func, isa);
+        // we recompute CFG and domtree in case they have been invalidated by the pass
+        self.compute_cfg();
+        self.compute_domtree();
         self.verify_if(isa)
     }
 

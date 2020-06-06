@@ -642,6 +642,11 @@ impl<'a> Verifier<'a> {
                 ref args,
                 ..
             }
+            | BranchCFI {
+                destination,
+                ref args,
+                ..
+            }
             | BranchInt {
                 destination,
                 ref args,

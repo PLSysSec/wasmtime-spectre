@@ -71,6 +71,7 @@ impl<'a> Context<'a> {
         // TODO: target = dfg[branch].branch_destination().expect("conditional branch");
         let target = match self.cur.func.dfg[branch] {
             InstructionData::Branch { destination, .. }
+            | InstructionData::BranchCFI { destination, .. }
             | InstructionData::BranchIcmp { destination, .. }
             | InstructionData::BranchInt { destination, .. }
             | InstructionData::BranchFloat { destination, .. } => destination,

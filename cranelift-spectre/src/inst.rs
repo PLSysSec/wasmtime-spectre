@@ -224,6 +224,13 @@ pub fn get_cmovnz_from_r14(reg: u16) -> &'static [u8] {
     }
 }
 
+// cmovcc r14, reg
+/// cc_bits: bits which somehow represent the condition code
+/// in_reg1: register to cmov into r14
+pub fn get_cmovcc_to_r14(cc_bits: u16, in_reg1: u16) -> Vec<u8> {
+    unimplemented!()
+}
+
 /// `label`: CFI label to compare against
 /// `zero_r15`: whether to zero `r15` if the CFI label is wrong
 /// `zero_rsp`: whether to zero `rsp` if the CFI label is wrong
@@ -263,5 +270,6 @@ pub fn get_condbr_new_cfi_label_bytes(
     // cmovz out, block2_label
     // ```
 
-    unimplemented!()
+    //unimplemented!()
+    Vec::new()
 }

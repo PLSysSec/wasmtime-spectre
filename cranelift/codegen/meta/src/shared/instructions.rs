@@ -69,6 +69,15 @@ fn define_control_flow(
 
     {
         let c = &Operand::new("c", Testable).with_doc("Controlling value to test");
+        const CFI_LABEL_SIZE_BITS: u16 = 64;
+        let block_label = &TypeVar::new(
+            "block_label",
+            "A CFI block label",
+            TypeSetBuilder::new()
+                .ints(CFI_LABEL_SIZE_BITS..CFI_LABEL_SIZE_BITS)
+                .build(),
+        );
+        let cfi_label = &Operand::new("cfi_label", block_label);
 
         ig.push(
             Inst::new(
@@ -82,6 +91,36 @@ fn define_control_flow(
                 &formats.branch,
             )
             .operands_in(vec![c, block, args])
+            .is_branch(true),
+        );
+
+        ig.push(
+            Inst::new(
+                "brz_cfi",
+                r#"
+        Branch when zero, for CFI.
+
+        If ``c`` is a `b1` value, take the branch when ``c`` is false. If
+        ``c`` is an integer value, take the branch when ``c = 0``.
+        "#,
+                &formats.branch_cfi,
+            )
+            .operands_in(vec![c, cfi_label, block, args])
+            .is_branch(true),
+        );
+
+        ig.push(
+            Inst::new(
+                "brnz_cfi",
+                r#"
+        Branch when non-zero, for CFI.
+
+        If ``c`` is a `b1` value, take the branch when ``c`` is true. If
+        ``c`` is an integer value, take the branch when ``c != 0``.
+        "#,
+                &formats.branch_cfi,
+            )
+            .operands_in(vec![c, cfi_label, block, args])
             .is_branch(true),
         );
 
@@ -535,9 +574,9 @@ fn define_simd_lane_access(
             r#"
         Vector swizzle.
 
-        Returns a new vector with byte-width lanes selected from the lanes of the first input 
-        vector ``x`` specified in the second input vector ``s``. The indices ``i`` in range 
-        ``[0, 15]`` select the ``i``-th element of ``x``. For indices outside of the range the 
+        Returns a new vector with byte-width lanes selected from the lanes of the first input
+        vector ``x`` specified in the second input vector ``s``. The indices ``i`` in range
+        ``[0, 15]`` select the ``i``-th element of ``x``. For indices outside of the range the
         resulting lane is 0. Note that this operates on byte-width lanes.
         "#,
             &formats.binary,
@@ -1162,7 +1201,7 @@ pub(crate) fn define(
         Inst::new(
             "uload8x8",
             r#"
-        Load an 8x8 vector (64 bits) from memory at ``p + Offset`` and zero-extend into an i16x8 
+        Load an 8x8 vector (64 bits) from memory at ``p + Offset`` and zero-extend into an i16x8
         vector.
         "#,
             &formats.load,
@@ -1176,7 +1215,7 @@ pub(crate) fn define(
         Inst::new(
             "sload8x8",
             r#"
-        Load an 8x8 vector (64 bits) from memory at ``p + Offset`` and sign-extend into an i16x8 
+        Load an 8x8 vector (64 bits) from memory at ``p + Offset`` and sign-extend into an i16x8
         vector.
         "#,
             &formats.load,
@@ -1201,7 +1240,7 @@ pub(crate) fn define(
         Inst::new(
             "uload16x4",
             r#"
-        Load an 16x4 vector (64 bits) from memory at ``p + Offset`` and zero-extend into an i32x4 
+        Load an 16x4 vector (64 bits) from memory at ``p + Offset`` and zero-extend into an i32x4
         vector.
         "#,
             &formats.load,
@@ -1215,7 +1254,7 @@ pub(crate) fn define(
         Inst::new(
             "sload16x4",
             r#"
-        Load a 16x4 vector (64 bits) from memory at ``p + Offset`` and sign-extend into an i32x4 
+        Load a 16x4 vector (64 bits) from memory at ``p + Offset`` and sign-extend into an i32x4
         vector.
         "#,
             &formats.load,
@@ -1240,7 +1279,7 @@ pub(crate) fn define(
         Inst::new(
             "uload32x2",
             r#"
-        Load an 32x2 vector (64 bits) from memory at ``p + Offset`` and zero-extend into an i64x2 
+        Load an 32x2 vector (64 bits) from memory at ``p + Offset`` and zero-extend into an i64x2
         vector.
         "#,
             &formats.load,
@@ -1254,7 +1293,7 @@ pub(crate) fn define(
         Inst::new(
             "sload32x2",
             r#"
-        Load a 32x2 vector (64 bits) from memory at ``p + Offset`` and sign-extend into an i64x2 
+        Load a 32x2 vector (64 bits) from memory at ``p + Offset`` and sign-extend into an i64x2
         vector.
         "#,
             &formats.load,

@@ -6,6 +6,7 @@ pub(crate) struct Formats {
     pub(crate) binary: Rc<InstructionFormat>,
     pub(crate) binary_imm: Rc<InstructionFormat>,
     pub(crate) branch: Rc<InstructionFormat>,
+    pub(crate) branch_cfi: Rc<InstructionFormat>,
     pub(crate) branch_float: Rc<InstructionFormat>,
     pub(crate) branch_icmp: Rc<InstructionFormat>,
     pub(crate) branch_int: Rc<InstructionFormat>,
@@ -143,6 +144,13 @@ impl Formats {
             jump: Builder::new("Jump").imm(&entities.block).varargs().build(),
 
             branch: Builder::new("Branch")
+                .value()
+                .imm(&entities.block)
+                .varargs()
+                .build(),
+
+            branch_cfi: Builder::new("BranchCFI")
+                .value()
                 .value()
                 .imm(&entities.block)
                 .varargs()
