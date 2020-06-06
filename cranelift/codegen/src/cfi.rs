@@ -54,7 +54,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                     }
                     cur.remove_inst();
                 }
-                // Opcode::BrIcmp | Opcode::Brif | Opcode::Brff => unimplemented!(),
+                Opcode::BrIcmp | Opcode::Brif | Opcode::Brff => unimplemented!(),
                 _ => {}
             }
         }

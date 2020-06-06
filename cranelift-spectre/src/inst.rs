@@ -148,80 +148,104 @@ pub fn get_test_bytes(reg: u16) -> &'static [u8] {
     }
 }
 
-// cmovz rax, r14
-// cmovz rcx, r14
-// cmovz rdx, r14
-// cmovz rbx, r14
-// cmovz rsp, r14
-// cmovz rbp, r14
-// cmovz rsi, r14
-// cmovz rdi, r14
-// cmovz r8, r14
-// cmovz r9, r14
-// cmovz r10, r14
-// cmovz r11, r14
-// cmovz r12, r14
-// cmovz r13, r14
-// cmovz r14, r14
-// cmovz r15, r14
-pub fn get_cmovz_from_r14(reg: u16) -> &'static [u8] {
+fn get_reg_bits(reg: u16) -> u8 {
     match reg {
-        R_RAX => &[0x49, 0x0f, 0x44, 0xc6],
-        R_RCX => &[0x49, 0x0f, 0x44, 0xce],
-        R_RDX => &[0x49, 0x0f, 0x44, 0xd6],
-        R_RBX => &[0x49, 0x0f, 0x44, 0xde],
-        R_RSP => &[0x49, 0x0f, 0x44, 0xe6],
-        R_RBP => &[0x49, 0x0f, 0x44, 0xee],
-        R_RSI => &[0x49, 0x0f, 0x44, 0xf6],
-        R_RDI => &[0x49, 0x0f, 0x44, 0xfe],
-        R_R8  => &[0x4d, 0x0f, 0x44, 0xc6],
-        R_R9  => &[0x4d, 0x0f, 0x44, 0xce],
-        R_R10 => &[0x4d, 0x0f, 0x44, 0xd6],
-        R_R11 => &[0x4d, 0x0f, 0x44, 0xde],
-        R_R12 => &[0x4d, 0x0f, 0x44, 0xe6],
-        R_R13 => &[0x4d, 0x0f, 0x44, 0xee],
-        R_R14 => &[0x4d, 0x0f, 0x44, 0xf6],
-        R_R15 => &[0x4d, 0x0f, 0x44, 0xfe],
+        R_RAX => 0,
+        R_RCX => 1,
+        R_RDX => 2,
+        R_RBX => 3,
+        R_RSP => 4,
+        R_RBP => 5,
+        R_RSI => 6,
+        R_RDI => 7,
+        R_R8  => 0,
+        R_R9  => 1,
+        R_R10 => 2,
+        R_R11 => 3,
+        R_R12 => 4,
+        R_R13 => 5,
+        R_R14 => 6,
+        R_R15 => 7,
+        _ => panic!("Unknown reg:{}", reg),
+    }
+}
+// mov rax, r14
+// mov rcx, r14
+// mov rdx, r14
+// mov rbx, r14
+// mov rsp, r14
+// mov rbp, r14
+// mov rsi, r14
+// mov rdi, r14
+// mov r8, r14
+// mov r9, r14
+// mov r10, r14
+// mov r11, r14
+// mov r12, r14
+// mov r13, r14
+// mov r14, r14
+// mov r15, r14
+pub fn get_mov_from_r14(reg: u16) -> &'static [u8] {
+    match reg {
+        R_RAX => &[0x4c, 0x89, 0xf0],
+        R_RCX => &[0x4c, 0x89, 0xf1],
+        R_RDX => &[0x4c, 0x89, 0xf2],
+        R_RBX => &[0x4c, 0x89, 0xf3],
+        R_RSP => &[0x4c, 0x89, 0xf4],
+        R_RBP => &[0x4c, 0x89, 0xf5],
+        R_RSI => &[0x4c, 0x89, 0xf6],
+        R_RDI => &[0x4c, 0x89, 0xf7],
+        R_R8  => &[0x4d, 0x89, 0xf0],
+        R_R9  => &[0x4d, 0x89, 0xf1],
+        R_R10 => &[0x4d, 0x89, 0xf2],
+        R_R11 => &[0x4d, 0x89, 0xf3],
+        R_R12 => &[0x4d, 0x89, 0xf4],
+        R_R13 => &[0x4d, 0x89, 0xf5],
+        R_R14 => &[0x4d, 0x89, 0xf6],
+        R_R15 => &[0x4d, 0x89, 0xf7],
         _ => panic!("Unknown reg:{}", reg),
     }
 }
 
-// cmovnz rax, r14
-// cmovnz rcx, r14
-// cmovnz rdx, r14
-// cmovnz rbx, r14
-// cmovnz rsp, r14
-// cmovnz rbp, r14
-// cmovnz rsi, r14
-// cmovnz rdi, r14
-// cmovnz r8, r14
-// cmovnz r9, r14
-// cmovnz r10, r14
-// cmovnz r11, r14
-// cmovnz r12, r14
-// cmovnz r13, r14
-// cmovnz r14, r14
-// cmovnz r15, r14
-pub fn get_cmovnz_from_r14(reg: u16) -> &'static [u8] {
-    match reg {
-        R_RAX => &[0x49, 0x0f, 0x45, 0xc6],
-        R_RCX => &[0x49, 0x0f, 0x45, 0xce],
-        R_RDX => &[0x49, 0x0f, 0x45, 0xd6],
-        R_RBX => &[0x49, 0x0f, 0x45, 0xde],
-        R_RSP => &[0x49, 0x0f, 0x45, 0xe6],
-        R_RBP => &[0x49, 0x0f, 0x45, 0xee],
-        R_RSI => &[0x49, 0x0f, 0x45, 0xf6],
-        R_RDI => &[0x49, 0x0f, 0x45, 0xfe],
-        R_R8  => &[0x4d, 0x0f, 0x45, 0xc6],
-        R_R9  => &[0x4d, 0x0f, 0x45, 0xce],
-        R_R10 => &[0x4d, 0x0f, 0x45, 0xd6],
-        R_R11 => &[0x4d, 0x0f, 0x45, 0xde],
-        R_R12 => &[0x4d, 0x0f, 0x45, 0xe6],
-        R_R13 => &[0x4d, 0x0f, 0x45, 0xee],
-        R_R14 => &[0x4d, 0x0f, 0x45, 0xf6],
-        R_R15 => &[0x4d, 0x0f, 0x45, 0xfe],
-        _ => panic!("Unknown reg:{}", reg),
-    }
+
+// cmovz reg1, reg2
+pub fn get_cmovz(reg1: u16, reg2: u16) -> Vec<u8> {
+    // REX.W + 0F 44 /r
+    // 0x4 (1(0|1)0(0|1));
+    let rexw: u8 = 0x48;
+    let reg1_bit = if reg1 > R_RDI { 0b100 } else { 0 };
+    let reg2_bit = if reg2 > R_RDI { 0b001 } else { 0 };
+
+    let byte1 = rexw | reg1_bit | reg2_bit;
+    let byte2: u8 = 0x0f;
+    let byte3: u8 = 0x44;
+
+    let reg_chooser: u8 = 0b11000000;
+    let reg1_choose: u8 = get_reg_bits(reg1);
+    let reg2_choose: u8 = get_reg_bits(reg2);
+    let byte4 = reg_chooser | (reg1_choose << 3) | reg2_choose;
+
+    return vec![byte1, byte2, byte3, byte4];
+}
+
+// cmovnz reg1, reg2
+pub fn get_cmovnz(reg1: u16, reg2: u16) -> Vec<u8> {
+    // REX.W + 0F 45 /r
+    // 0x4 (1(0|1)0(0|1));
+    let rexw: u8 = 0x48;
+    let reg1_bit = if reg1 > R_RDI { 0b100 } else { 0 };
+    let reg2_bit = if reg2 > R_RDI { 0b001 } else { 0 };
+
+    let byte1 = rexw | reg1_bit | reg2_bit;
+    let byte2: u8 = 0x0f;
+    let byte3: u8 = 0x45;
+
+    let reg_chooser: u8 = 0b11000000;
+    let reg1_choose: u8 = get_reg_bits(reg1);
+    let reg2_choose: u8 = get_reg_bits(reg2);
+    let byte4 = reg_chooser | (reg1_choose << 3) | reg2_choose;
+
+    return vec![byte1, byte2, byte3, byte4];
 }
 
 // cmovcc r14, reg
@@ -246,10 +270,10 @@ pub fn get_cfi_check_bytes(label: u64, zero_r15: bool, zero_rsp: bool) -> Vec<u8
     let mut bytes = get_sub_const_bytes(R_R14, label);
     bytes.extend_from_slice(get_test_bytes(R_R14));
     if zero_r15 {
-        bytes.extend_from_slice(get_cmovnz_from_r14(R_R15));
+        bytes.extend_from_slice(&get_cmovnz(R_R15, R_R14));
     }
     if zero_rsp {
-        bytes.extend_from_slice(get_cmovnz_from_r14(R_RSP));
+        bytes.extend_from_slice(&get_cmovnz(R_RSP, R_R14));
     }
 
     return bytes;
@@ -269,6 +293,11 @@ pub fn get_condbr_new_cfi_label_bytes(
     // mov out, r14
     // cmovz out, block2_label
     // ```
+
+    let mut bytes = get_test_bytes(R_R14).to_vec();
+    bytes.extend_from_slice(&get_cmovz(R_R14, block1_label_reg));
+    bytes.extend_from_slice(get_mov_from_r14(out_reg));
+    bytes.extend_from_slice(&get_cmovz(out_reg, block2_label_reg));
 
     //unimplemented!()
     Vec::new()
