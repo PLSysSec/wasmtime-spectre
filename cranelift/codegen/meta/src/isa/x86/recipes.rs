@@ -2769,6 +2769,26 @@ pub(crate) fn define<'shared>(
         )
     );
 
+    recipes.add_recipe(
+        EncodingRecipeBuilder::new(
+            "conditionally_set_cfi_label",
+            &formats.unary,
+            TEST_SIZE + CMOV_SIZE,
+        ).operands_in(vec![gpr])
+        .clobbers_flags(true)
+        .emit(
+            r#"
+                use cranelift_spectre::inst::R_R14;
+                // test r14, r14
+                let bytes = cranelift_spectre::inst::get_test_bytes(R_R14);
+                bytes.iter().for_each(|&b| sink.put1(b));
+                // cmovz r14, new_label
+                let bytes = cranelift_spectre::inst::get_cmovz(R_R14, in_reg0);
+                bytes.iter().for_each(|&b| sink.put1(b));
+            "#,
+        )
+    );
+
     // Arithematic with flag I/O.
 
     // XX /r, MR form. Add two GPR registers and set carry flag.
@@ -2968,6 +2988,7 @@ pub(crate) fn define<'shared>(
     );
 
     const CMOV_SIZE: u64 = 4;
+    const TEST_SIZE: u64 = 3;
 
     recipes.add_template(
         Template::new(

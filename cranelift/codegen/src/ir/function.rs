@@ -347,7 +347,7 @@ impl Function {
     /// Checks that the specified block can be encoded as a basic block.
     ///
     /// On error, returns the first invalid instruction and an error message.
-    pub fn is_block_basic(&self, block: Block) -> Result<(), (Inst, &'static str)> {
+    pub fn is_block_basic(&self, block: Block) -> Result<(), (Inst, std::string::String)> {
         let dfg = &self.dfg;
         let inst_iter = self.layout.block_insts(block);
 
@@ -356,11 +356,11 @@ impl Function {
 
         // A conditional branch is permitted in a basic block only when followed
         // by a terminal jump or fallthrough instruction.
-        if let Some(_branch) = inst_iter.next() {
+        if let Some(branch) = inst_iter.next() {
             if let Some(next) = inst_iter.next() {
                 match dfg[next].opcode() {
                     Opcode::Fallthrough | Opcode::Jump => (),
-                    _ => return Err((next, "post-branch instruction not fallthrough or jump")),
+                    opcode => return Err((next, format!("post-branch instruction not fallthrough or jump. Branch opcode was {}, post-branch opcode was {}", dfg[branch].opcode(), opcode))),
                 }
             }
         }

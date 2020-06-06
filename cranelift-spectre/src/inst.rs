@@ -169,6 +169,7 @@ fn get_reg_bits(reg: u16) -> u8 {
         _ => panic!("Unknown reg:{}", reg),
     }
 }
+
 // mov rax, r14
 // mov rcx, r14
 // mov rdx, r14
@@ -206,7 +207,6 @@ pub fn get_mov_from_r14(reg: u16) -> &'static [u8] {
         _ => panic!("Unknown reg:{}", reg),
     }
 }
-
 
 // cmovz reg1, reg2
 pub fn get_cmovz(reg1: u16, reg2: u16) -> Vec<u8> {

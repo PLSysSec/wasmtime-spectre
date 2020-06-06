@@ -272,6 +272,7 @@ pub(crate) fn define(
     let block1_label = &Operand::new("block1_label", block_label);
     let block2_label = &Operand::new("block2_label", block_label);
     let cfi_label = &Operand::new("cfi_label", block_label);
+
     ig.push(
         Inst::new(
             "condbr_get_new_cfi_label",
@@ -304,6 +305,19 @@ pub(crate) fn define(
         )
         .operands_in(vec![block1_label, block2_label])
         .operands_out(vec![cfi_label]),
+    );
+
+    ig.push(
+        Inst::new(
+            "conditionally_set_cfi_label",
+            r#"
+    This sets the CFI label register (`r14`) to the label given as an
+    argument to this instruction, but only if the CFI label register
+    was currently 0 (indicating we're on the right path).
+    "#,
+            &formats.unary,
+        )
+        .operands_in(vec![cfi_label]),
     );
 
     let uimm8 = &immediates.uimm8;

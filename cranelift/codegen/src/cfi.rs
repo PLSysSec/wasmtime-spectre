@@ -1,7 +1,7 @@
 use crate::cursor::{Cursor, EncCursor, FuncCursor};
 use crate::ir::function::Function;
 use crate::ir::instructions::{BranchInfo, Opcode};
-use crate::ir::{InstBuilder, Value, types};
+use crate::ir::{types, InstBuilder, Value};
 use crate::isa::TargetIsa;
 use alloc::vec::Vec;
 
@@ -23,7 +23,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                         BranchInfo::SingleDest(dest, varargs) => (dest, varargs),
                         _ => panic!("Expected Brz / Brnz to be a SingleDest"),
                     };
-                    let varargs: Vec<Value> = varargs.to_vec();  // end immutable borrow of cur
+                    let varargs: Vec<Value> = varargs.to_vec(); // end immutable borrow of cur
                     let condition = cur.func.dfg.inst_args(inst)[0];
 
                     /* probably not going to use this
@@ -59,6 +59,44 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
             }
         }
     }
+}
+
+pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
+     let mut cur: EncCursor = EncCursor::new(func, isa);
+     while let Some(block) = cur.next_block() {
+         cur.goto_last_inst(block);
+         let term = cur.current_inst().unwrap();
+         let opcode = cur.func.dfg[term].opcode();
+         match opcode {
+             Opcode::Jump | Opcode::Fallthrough => {
+                 match get_previous_opcode(&mut cur) {
+                     Some(Opcode::Brz)
+                     | Some(Opcode::BrzCfi)
+                     | Some(Opcode::Brnz)
+                     | Some(Opcode::BrnzCfi)
+                     | Some(Opcode::BrIcmp)
+                     | Some(Opcode::Brif)
+                     | Some(Opcode::Brff)
+                     => {} // do nothing, as this previous condbr instruction will handle cfi labels
+                     _ => {
+                        // we need to handle cfi label ourselves
+                        let new_label = cur.ins().iconst(types::I64, 42); // 42 standing in for the real label
+                        cur.ins().conditionally_set_cfi_label(new_label);
+                     }
+                 }
+             }
+             _ => {}
+         }
+     }
+}
+
+fn get_previous_opcode(cur: &mut EncCursor) -> Option<Opcode> {
+    let saved_position = cur.position();
+    let opcode = cur.prev_inst().map(|inst| {
+        cur.func.dfg[inst].opcode()
+    });
+    cur.set_position(saved_position);
+    opcode
 }
 
 // Assign a unique Cfi number to each linear blocks
