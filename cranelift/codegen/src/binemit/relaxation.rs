@@ -31,7 +31,8 @@ use crate::binemit::{CodeInfo, CodeOffset};
 use crate::cursor::{Cursor, FuncCursor};
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
-use crate::ir::{Block, Function, Inst, InstructionData, Opcode, Value, ValueList, ValueLoc};
+use crate::ir::{Block, Function, Inst, InstBuilder, InstructionData, Opcode, Value, ValueDef, ValueList, ValueLoc, types};
+use crate::ir::instructions::BranchInfo;
 use crate::isa::{registers::RegUnit, EncInfo, TargetIsa};
 use crate::iterators::IteratorExtras;
 use crate::regalloc::RegDiversions;
@@ -89,7 +90,10 @@ fn spectre_resistance_on_basic_block(isa: &dyn TargetIsa, cur: &mut FuncCursor, 
         let block = cur.current_block().unwrap();
         if !is_first_block && cur.func.block_guards[block].len() == 0 {
             let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
-            let label = cur.func.cfi_block_nums[block].unwrap();
+            if cur.func.cfi_block_nums[block].is_none() {
+                let _a = 1;
+            }
+            let label = cur.func.cfi_block_nums[block].unwrap_or(42);
             let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, zero_heap, zero_stack);
             cur.func.block_guards[block].append(&mut bytes);
         }
@@ -143,7 +147,61 @@ fn spectre_resistance_on_inst(isa: &dyn TargetIsa, cur: &mut FuncCursor, inst: &
             let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, zero_heap, zero_stack);
             cur.func.post_inst_guards[*inst].append(&mut bytes);
         }
+
+        if opcode == Opcode::Brz || opcode == Opcode::Brnz {
+            let cfi_label_inst = get_previous_cfi_label_inst(cur);
+            let br_block = match cur.func.dfg.analyze_branch(*inst) {
+                BranchInfo::SingleDest(dest, _) => dest,
+                _ => {
+                    panic!("Unexpected branch info");
+                }
+            };
+            let br_block_label = cur.func.cfi_block_nums[br_block].unwrap();
+            let fallthrough_block_label = cur.func.cfi_inst_nums[*inst].unwrap();
+
+            let args = cur.func.dfg.inst_args(cfi_label_inst);
+            assert!(args.len() == 2, "Expected two CFI labels");
+
+            let original_label0_source = cur.func.dfg.value_def(args[0]);
+            let original_label1_source = cur.func.dfg.value_def(args[1]);
+
+            let original_label0_inst = match original_label0_source {
+                ValueDef::Result(inst, _) => inst,
+                _ => panic!("Unexpected label source for CFI"),
+            };
+            let original_label1_inst = match original_label1_source {
+                ValueDef::Result(inst, _) => inst,
+                _ => panic!("Unexpected label source for CFI"),
+            };
+
+            cur.func.dfg.replace(original_label0_inst).iconst(types::I64, br_block_label as i64);
+            cur.func.dfg.replace(original_label1_inst).iconst(types::I64, fallthrough_block_label as i64);
+        }
     }
+}
+
+fn get_previous_cfi_label_inst(cur: &mut FuncCursor) -> Inst {
+    // get prev inst which is opcode == Opcode::CondbrGetNewCfiLabel
+    // this should be in the same block, so only iterate in this block
+    let saved_cursor_position = cur.position();
+
+    let mut found = None;
+    loop {
+        let cur_inst = cur.current_inst().unwrap();
+        let opcode = cur.func.dfg[cur_inst].opcode();
+        if opcode ==  Opcode::CondbrGetNewCfiLabel {
+            found = Some(cur_inst);
+            break;
+        }
+        cur.prev_inst();
+    }
+
+    if found.is_none() {
+        panic!("Could not find cfi label instruction associated with branch instruction");
+    }
+
+    cur.set_position(saved_cursor_position);
+    return found.unwrap();
 }
 
 fn get_registers(cur: &FuncCursor, divert: &RegDiversions, values: &[Value]) -> Vec<RegUnit> {
