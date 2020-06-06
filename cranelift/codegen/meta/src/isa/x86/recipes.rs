@@ -2484,36 +2484,6 @@ pub(crate) fn define<'shared>(
             ),
     );
 
-    const TEST_SIZE: u64 = 3;
-    const CMOV_SIZE: u64 = 4;
-
-    recipes.add_template_recipe(
-        EncodingRecipeBuilder::new(
-            "jmpb_cfi",
-            &formats.branch, /* == jump_cfi */
-            1 + TEST_SIZE + CMOV_SIZE,
-        )
-        .branch_range((1, 8))
-        .operands_in(vec![gpr])
-        .clobbers_flags(true)
-        .emit(
-            r#"
-                    use cranelift_spectre::inst::R_R14;
-                    // test r14, r14
-                    let bytes = cranelift_spectre::inst::get_test_bytes(R_R14);
-                    bytes.iter().for_each(|&b| sink.put1(b));
-
-                    // cmovz r14, new_label
-                    let bytes = cranelift_spectre::inst::get_cmovz(R_R14, in_reg0);
-                    bytes.iter().for_each(|&b| sink.put1(b));
-
-                    // actual jump instruction
-                    {{PUT_OP}}(bits, BASE_REX, sink);
-                    disp1(destination, func, sink);
-                "#,
-        ),
-    );
-
     recipes.add_template_recipe(
         EncodingRecipeBuilder::new("jmpd", &formats.jump, 4)
             .branch_range((4, 32))
@@ -2524,33 +2494,6 @@ pub(crate) fn define<'shared>(
                     disp4(destination, func, sink);
                 "#,
             ),
-    );
-
-    recipes.add_template_recipe(
-        EncodingRecipeBuilder::new(
-            "jmpd_cfi",
-            &formats.branch, /* == jump_cfi */
-            4 + TEST_SIZE + CMOV_SIZE,
-        )
-        .branch_range((4, 32))
-        .operands_in(vec![gpr])
-        .clobbers_flags(true)
-        .emit(
-            r#"
-                    use cranelift_spectre::inst::R_R14;
-                    // test r14, r14
-                    let bytes = cranelift_spectre::inst::get_test_bytes(R_R14);
-                    bytes.iter().for_each(|&b| sink.put1(b));
-
-                    // cmovz r14, new_label
-                    let bytes = cranelift_spectre::inst::get_cmovz(R_R14, in_reg0);
-                    bytes.iter().for_each(|&b| sink.put1(b));
-
-                    // actual jump instruction
-                    {{PUT_OP}}(bits, BASE_REX, sink);
-                    disp4(destination, func, sink);
-                "#,
-        ),
     );
 
     recipes.add_template_recipe(
@@ -3024,6 +2967,8 @@ pub(crate) fn define<'shared>(
         .inferred_rex_compute_size("size_with_inferred_rex_for_inreg0"),
     );
 
+    const CMOV_SIZE: u64 = 4;
+
     recipes.add_template(
         Template::new(
             EncodingRecipeBuilder::new("tjccb_cfi", &formats.branch_cfi, 1 + 2 + CMOV_SIZE)
@@ -3075,7 +3020,7 @@ pub(crate) fn define<'shared>(
         .inferred_rex_compute_size("size_with_inferred_rex_for_inreg0"),
     );
 
-    recipes.add_template(
+   recipes.add_template(
         Template::new(
             EncodingRecipeBuilder::new("tjccd_cfi", &formats.branch_cfi, 1 + 6 + CMOV_SIZE)
                 .operands_in(vec![gpr, gpr])
@@ -3178,7 +3123,7 @@ pub(crate) fn define<'shared>(
         .when_prefixed(t8jccb),
     );
 
-    recipes.add_template(
+   recipes.add_template(
         Template::new(
             EncodingRecipeBuilder::new("t8jccb_abcd_cfi", &formats.branch_cfi, 1 + 2 + CMOV_SIZE)
                 .operands_in(vec![abcd, gpr])

@@ -207,6 +207,7 @@ pub fn get_mov_from_r14(reg: u16) -> &'static [u8] {
     }
 }
 
+
 // cmovz reg1, reg2
 pub fn get_cmovz(reg1: u16, reg2: u16) -> Vec<u8> {
     // REX.W + 0F 44 /r

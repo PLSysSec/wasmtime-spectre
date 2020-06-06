@@ -14,7 +14,7 @@ use crate::binemit::{
     TrapSink,
 };
 use crate::blade::do_blade;
-use crate::cfi::{do_br_cfi, do_cfi_number_allocate, do_condbr_cfi};
+use crate::cfi::{do_cfi_number_allocate, do_condbr_cfi};
 use crate::dce::do_dce;
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
@@ -221,9 +221,8 @@ impl Context {
                 SpectrePHTMitigation::CFI => {
                     // We also do this before regalloc, because we actually need
                     // regalloc to give us some temps for the new instructions
-                    // we're inserting in condbr_cfi
+                    // we're inserting
                     self.condbr_cfi(isa)?;
-                    self.br_cfi(isa)?;
                 }
                 _ => {}
             }
@@ -489,15 +488,6 @@ impl Context {
     /// Insert the appropriate CFI boilerplate before each conditional branch
     pub fn condbr_cfi(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
         do_condbr_cfi(&mut self.func, isa);
-        // we recompute CFG and domtree in case they have been invalidated by the pass
-        self.compute_cfg();
-        self.compute_domtree();
-        self.verify_if(isa)
-    }
-
-    /// Insert the appropriate CFI boilerplate before each unconditional branch
-    pub fn br_cfi(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
-        do_br_cfi(&mut self.func, isa);
         // we recompute CFG and domtree in case they have been invalidated by the pass
         self.compute_cfg();
         self.compute_domtree();

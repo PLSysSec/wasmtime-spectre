@@ -2320,7 +2320,6 @@ fn define_control_flow(
     let debugtrap = shared.by_name("debugtrap");
     let indirect_jump_table_br = shared.by_name("indirect_jump_table_br");
     let jump = shared.by_name("jump");
-    let jump_cfi = shared.by_name("jump_cfi");
     let jump_table_base = shared.by_name("jump_table_base");
     let jump_table_entry = shared.by_name("jump_table_entry");
     let return_ = shared.by_name("return");
@@ -2340,9 +2339,7 @@ fn define_control_flow(
     let rec_debugtrap = r.recipe("debugtrap");
     let rec_indirect_jmp = r.template("indirect_jmp");
     let rec_jmpb = r.template("jmpb");
-    let rec_jmpb_cfi = r.template("jmpb_cfi");
     let rec_jmpd = r.template("jmpd");
-    let rec_jmpd_cfi = r.template("jmpd_cfi");
     let rec_jt_base = r.template("jt_base");
     let rec_jt_entry = r.template("jt_entry");
     let rec_ret = r.template("ret");
@@ -2395,13 +2392,9 @@ fn define_control_flow(
 
     // Branches.
     e.enc32(jump, rec_jmpb.opcodes(&JUMP_SHORT));
-    e.enc32(jump_cfi, rec_jmpb_cfi.opcodes(&JUMP_SHORT));
     e.enc64(jump, rec_jmpb.opcodes(&JUMP_SHORT));
-    e.enc64(jump_cfi, rec_jmpb_cfi.opcodes(&JUMP_SHORT));
     e.enc32(jump, rec_jmpd.opcodes(&JUMP_NEAR_RELATIVE));
-    e.enc32(jump_cfi, rec_jmpd_cfi.opcodes(&JUMP_NEAR_RELATIVE));
     e.enc64(jump, rec_jmpd.opcodes(&JUMP_NEAR_RELATIVE));
-    e.enc64(jump_cfi, rec_jmpd_cfi.opcodes(&JUMP_NEAR_RELATIVE));
 
     e.enc_both(brif, rec_brib.opcodes(&JUMP_SHORT_IF_OVERFLOW));
     e.enc_both(brif, rec_brid.opcodes(&JUMP_NEAR_IF_OVERFLOW));
@@ -2426,23 +2419,14 @@ fn define_control_flow(
     // Start with the worst-case encoding for X86_32 only. The register allocator
     // can't handle a branch with an ABCD-constrained operand.
     e.enc32(brz.bind(B1), rec_t8jccd_long.opcodes(&TEST_BYTE_REG));
-    e.enc32(
-        brz_cfi.bind(B1),
-        rec_t8jccd_long_cfi.opcodes(&TEST_BYTE_REG),
-    );
+    e.enc32(brz_cfi.bind(B1), rec_t8jccd_long_cfi.opcodes(&TEST_BYTE_REG));
     e.enc32(brnz.bind(B1), rec_t8jccd_long.opcodes(&TEST_REG));
     e.enc32(brnz_cfi.bind(B1), rec_t8jccd_long_cfi.opcodes(&TEST_REG));
 
     e.enc_both(brz.bind(B1), rec_t8jccb_abcd.opcodes(&JUMP_SHORT_IF_EQUAL));
-    e.enc_both(
-        brz_cfi.bind(B1),
-        rec_t8jccb_abcd_cfi.opcodes(&JUMP_SHORT_IF_EQUAL),
-    );
+    e.enc_both(brz_cfi.bind(B1), rec_t8jccb_abcd_cfi.opcodes(&JUMP_SHORT_IF_EQUAL));
     e.enc_both(brz.bind(B1), rec_t8jccd_abcd.opcodes(&TEST_BYTE_REG));
-    e.enc_both(
-        brz_cfi.bind(B1),
-        rec_t8jccb_abcd_cfi.opcodes(&JUMP_SHORT_IF_EQUAL),
-    );
+    e.enc_both(brz_cfi.bind(B1), rec_t8jccb_abcd_cfi.opcodes(&JUMP_SHORT_IF_EQUAL));
     e.enc_both(
         brnz.bind(B1),
         rec_t8jccb_abcd.opcodes(&JUMP_SHORT_IF_NOT_EQUAL),
