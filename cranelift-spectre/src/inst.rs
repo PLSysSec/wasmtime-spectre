@@ -12,22 +12,22 @@ pub fn get_pop_jump_ret() -> &'static [u8] {
     &[0x41, 0x5b, 0x41, 0xff, 0xe3]
 }
 
-const R_RAX: u16 = 16;
-const R_RCX: u16 = 17;
-const R_RDX: u16 = 18;
-const R_RBX: u16 = 19;
-const R_RSP: u16 = 20;
-const R_RBP: u16 = 21;
-const R_RSI: u16 = 22;
-const R_RDI: u16 = 23;
-const R_R8 : u16 = 24;
-const R_R9 : u16 = 25;
-const R_R10: u16 = 26;
-const R_R11: u16 = 27;
-const R_R12: u16 = 28;
-const R_R13: u16 = 29;
-const R_R14: u16 = 30;
-const R_R15: u16 = 31;
+pub const R_RAX: u16 = 16;
+pub const R_RCX: u16 = 17;
+pub const R_RDX: u16 = 18;
+pub const R_RBX: u16 = 19;
+pub const R_RSP: u16 = 20;
+pub const R_RBP: u16 = 21;
+pub const R_RSI: u16 = 22;
+pub const R_RDI: u16 = 23;
+pub const R_R8 : u16 = 24;
+pub const R_R9 : u16 = 25;
+pub const R_R10: u16 = 26;
+pub const R_R11: u16 = 27;
+pub const R_R12: u16 = 28;
+pub const R_R13: u16 = 29;
+pub const R_R14: u16 = 30;
+pub const R_R15: u16 = 31;
 
 // mov eax, eax
 // mov ecx, ecx
@@ -246,13 +246,6 @@ pub fn get_cmovnz(reg1: u16, reg2: u16) -> Vec<u8> {
     let byte4 = reg_chooser | (reg1_choose << 3) | reg2_choose;
 
     return vec![byte1, byte2, byte3, byte4];
-}
-
-// cmovcc r14, reg
-/// cc_bits: bits which somehow represent the condition code
-/// in_reg1: register to cmov into r14
-pub fn get_cmovcc_to_r14(cc_bits: u16, in_reg1: u16) -> Vec<u8> {
-    unimplemented!()
 }
 
 /// `label`: CFI label to compare against

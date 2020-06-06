@@ -2981,7 +2981,12 @@ pub(crate) fn define<'shared>(
                         modrm_rr(in_reg0, in_reg0, sink);
 
                         // cmovcc r14, in_reg1
-                        let bytes = cranelift_spectre::inst::get_cmovcc_to_r14(bits, in_reg1);
+                        use cranelift_spectre::inst::R_R14;
+                        let bytes = match bits & 0x0f {
+                            0x4 => cranelift_spectre::inst::get_cmovz(R_R14, in_reg1),
+                            0x5 => cranelift_spectre::inst::get_cmovnz(R_R14, in_reg1),
+                            other => panic!("Unexpected condition code: {:?}", other),
+                        };
                         bytes.iter().for_each(|&b| sink.put1(b));
 
                         // Jcc instruction.
@@ -3027,7 +3032,12 @@ pub(crate) fn define<'shared>(
                         modrm_rr(in_reg0, in_reg0, sink);
 
                         // cmovcc r14, in_reg1
-                        let bytes = cranelift_spectre::inst::get_cmovcc_to_r14(bits, in_reg1);
+                        use cranelift_spectre::inst::R_R14;
+                        let bytes = match bits & 0x0f {
+                            0x4 => cranelift_spectre::inst::get_cmovz(R_R14, in_reg1),
+                            0x5 => cranelift_spectre::inst::get_cmovnz(R_R14, in_reg1),
+                            other => panic!("Unexpected condition code: {:?}", other),
+                        };
                         bytes.iter().for_each(|&b| sink.put1(b));
 
                         // Jcc instruction.
@@ -3075,7 +3085,12 @@ pub(crate) fn define<'shared>(
                     modrm_rr(in_reg0, in_reg0, sink);
 
                     // cmovcc r14, in_reg1
-                    let bytes = cranelift_spectre::inst::get_cmovcc_to_r14(bits, in_reg1);
+                    use cranelift_spectre::inst::R_R14;
+                    let bytes = match bits & 0x0f {
+                        0x4 => cranelift_spectre::inst::get_cmovz(R_R14, in_reg1),
+                        0x5 => cranelift_spectre::inst::get_cmovnz(R_R14, in_reg1),
+                        other => panic!("Unexpected condition code: {:?}", other),
+                    };
                     bytes.iter().for_each(|&b| sink.put1(b));
 
                     // Jcc instruction.
@@ -3120,7 +3135,12 @@ pub(crate) fn define<'shared>(
                     modrm_rr(in_reg0, in_reg0, sink);
 
                     // cmovcc r14, in_reg1
-                    let bytes = cranelift_spectre::inst::get_cmovcc_to_r14(bits, in_reg1);
+                    use cranelift_spectre::inst::R_R14;
+                    let bytes = match bits & 0x0f {
+                        0x4 => cranelift_spectre::inst::get_cmovz(R_R14, in_reg1),
+                        0x5 => cranelift_spectre::inst::get_cmovnz(R_R14, in_reg1),
+                        other => panic!("Unexpected condition code: {:?}", other),
+                    };
                     bytes.iter().for_each(|&b| sink.put1(b));
 
                     // Jcc instruction.
@@ -3166,7 +3186,12 @@ pub(crate) fn define<'shared>(
                     modrm_rr(in_reg0, in_reg0, sink);
 
                     // cmovcc r14, in_reg1
-                    let bytes = cranelift_spectre::inst::get_cmovcc_to_r14(bits, in_reg1);
+                    use cranelift_spectre::inst::R_R14;
+                    let bytes = match bits & 0x0f {
+                        0x4 => cranelift_spectre::inst::get_cmovz(R_R14, in_reg1),
+                        0x5 => cranelift_spectre::inst::get_cmovnz(R_R14, in_reg1),
+                        other => panic!("Unexpected condition code: {:?}", other),
+                    };
                     bytes.iter().for_each(|&b| sink.put1(b));
 
                     // Jcc instruction.
@@ -3213,7 +3238,12 @@ pub(crate) fn define<'shared>(
                     modrm_rr(in_reg0, in_reg0, sink);
 
                     // cmovcc r14, in_reg1
-                    let bytes = cranelift_spectre::inst::get_cmovcc_to_r14(bits, in_reg1);
+                    use cranelift_spectre::inst::R_R14;
+                    let bytes = match bits & 0x0f {
+                        0x4 => cranelift_spectre::inst::get_cmovz(R_R14, in_reg1),
+                        0x5 => cranelift_spectre::inst::get_cmovnz(R_R14, in_reg1),
+                        other => panic!("Unexpected condition code: {:?}", other),
+                    };
                     bytes.iter().for_each(|&b| sink.put1(b));
 
                     // Jcc instruction.
@@ -3263,7 +3293,12 @@ pub(crate) fn define<'shared>(
                     sink.put4(0xff);
 
                     // cmovcc r14, in_reg1
-                    let bytes = cranelift_spectre::inst::get_cmovcc_to_r14(bits, in_reg1);
+                    use cranelift_spectre::inst::R_R14;
+                    let bytes = match bits & 0x0f {
+                        0x4 => cranelift_spectre::inst::get_cmovz(R_R14, in_reg1),
+                        0x5 => cranelift_spectre::inst::get_cmovnz(R_R14, in_reg1),
+                        other => panic!("Unexpected condition code: {:?}", other),
+                    };
                     bytes.iter().for_each(|&b| sink.put1(b));
 
                     // Jcc instruction.
