@@ -38,6 +38,10 @@ use self::heap::expand_heap_addr;
 use self::libcall::expand_as_libcall;
 use self::table::expand_table_addr;
 
+use cranelift_spectre::settings::{
+    get_spectre_pht_mitigation, SpectrePHTMitigation,
+};
+
 enum LegalizeInstResult {
     Done,
     Legalized,
@@ -325,7 +329,7 @@ fn expand_br_table(
     cfg: &mut ControlFlowGraph,
     isa: &dyn TargetIsa,
 ) {
-    if isa.flags().enable_jump_tables() {
+    if isa.flags().enable_jump_tables() && get_spectre_pht_mitigation() != SpectrePHTMitigation::CFI {
         expand_br_table_jt(inst, func, cfg, isa);
     } else {
         expand_br_table_conds(inst, func, cfg, isa);

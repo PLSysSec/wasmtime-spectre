@@ -1,5 +1,5 @@
 use crate::cursor::{Cursor, EncCursor, FuncCursor};
-use crate::ir::{Inst, InstBuilder, Value, ValueDef, ValueLoc, types};
+use crate::ir::{self, Inst, InstBuilder, Value, ValueDef, ValueLoc, types};
 use crate::ir::function::Function;
 use crate::ir::instructions::{BranchInfo, Opcode};
 use crate::isa::{registers::RegUnit, TargetIsa};
@@ -13,7 +13,18 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
         while let Some(inst) = cur.next_inst() {
             let opcode = cur.func.dfg[inst].opcode();
             match opcode {
-                Opcode::Brz | Opcode::Brnz => {
+                Opcode::Brz | Opcode::Brnz | Opcode::Brif => {
+                    let saved_position =
+                        if opcode == Opcode::Brif {
+                            // if its a brif, prev inst is a cmp
+                            // prev inst could be setting various flags
+                            // we can't add new instructions between after flag set
+                            let ret = cur.position();
+                            set_prev_valid_insert_point(&mut cur);
+                            ret
+                        } else {
+                            cur.position()
+                        };
                     let block1_label = cur.ins().iconst(types::I64, 42); // 42 standing in for the real label
                     let block2_label = cur.ins().iconst(types::I64, 54); // 54 standing in for the real label
                     let new_label = cur
@@ -30,13 +41,30 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
 
                     // replace the branch instruction with the corresponding CFI branch instruction
                     match opcode {
-                        Opcode::Brz => { cur.ins().brz_cfi(condition, new_label, dest, &varargs[..]); }
-                        Opcode::Brnz => { cur.ins().brnz_cfi(condition, new_label, dest, &varargs[..]); }
+                        Opcode::Brz => {
+                            cur.ins().brz_cfi(condition, new_label, dest, &varargs[..]);
+                            cur.set_position(saved_position);
+                            cur.remove_inst();
+                        }
+                        Opcode::Brnz => {
+                            cur.ins().brnz_cfi(condition, new_label, dest, &varargs[..]);
+                            cur.set_position(saved_position);
+                            cur.remove_inst();
+                        }
+                        Opcode::Brif => {
+                            // TODO: Need to add a new instruction which does just get_condbr_new_cfi_label_bytes and insert here
+                            // TODO: the final move from the output of above to r14 will be done in a later pass
+                            cur.set_position(saved_position);
+                        }
                         _ => { panic!("Shouldn't ever get here"); },
                     }
-                    cur.remove_inst();
                 }
-                // Opcode::BrIcmp | Opcode::Brif | Opcode::Brff => unimplemented!(),
+                Opcode::BrIcmp => {
+                    let _a = 1;
+                }
+                Opcode::Brff => {
+                    let _a = 1;
+                }
                 _ => {}
             }
         }
@@ -82,6 +110,25 @@ fn get_previous_opcode(cur: &mut EncCursor) -> Option<Opcode> {
     });
     cur.set_position(saved_position);
     opcode
+}
+
+fn set_prev_valid_insert_point(cur: &mut EncCursor) {
+    loop {
+        let inst = cur.current_inst();
+        if inst.is_none() {
+            let block = cur.current_block().unwrap();
+            cur.goto_first_insertion_point(block);
+            return;
+        }
+        let inst = inst.unwrap();
+        let opcode = cur.func.dfg[inst].opcode();
+
+        if !(opcode.writes_cpu_flags() || opcode.is_branch() || opcode == Opcode::Bint || opcode == Opcode::Trueif) {
+            return;
+        }
+
+        cur.prev_inst();
+    }
 }
 
 // Assign a unique Cfi number to each linear blocks
@@ -192,6 +239,7 @@ fn cfi_inst_checks(
         cur.func.post_inst_guards[*inst].append(&mut bytes);
     }
 
+    // TODO: || opcode == Opcode::Brif
     if opcode == Opcode::BrzCfi || opcode == Opcode::BrnzCfi {
         let cfi_label_inst = get_previous_cfi_label_inst(cur).unwrap();
         let br_block = match cur.func.dfg.analyze_branch(*inst) {
@@ -237,6 +285,17 @@ fn cfi_inst_checks(
 
         cur.func.dfg.replace(original_label0_inst).iconst(types::I64, br_block_label as i64);
         cur.func.dfg.replace(original_label1_inst).iconst(types::I64, fallthrough_block_label as i64);
+
+        if opcode == Opcode::Brif {
+            // TODO: for brif we have to inject the cmov to r14 on the brif inst's func.pre_inst_guards
+            // let cond_code = ir::condcodes::IntCC::UnsignedGreaterThan;
+            // let _cmov_bytes =
+            //     match cond_code {
+            //         ir::condcodes::IntCC::UnsignedGreaterThan => { cranelift_spectre::inst::get_cmovg(reg0, reg1) }
+            //         _ => { panic!("Not impl") }
+            //     };
+
+        }
     }
     else if opcode == Opcode::Jump || opcode == Opcode::Fallthrough {
         let _a = 1;

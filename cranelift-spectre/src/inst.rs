@@ -210,17 +210,26 @@ pub fn get_mov_from_r14(reg: u16) -> &'static [u8] {
 
 // cmovz reg1, reg2
 pub fn get_cmovz(reg1: u16, reg2: u16) -> Vec<u8> {
-    get_cmov(reg1, reg2, true)
+    get_cmov(reg1, reg2, 0x44)
 }
 
 // cmovnz reg1, reg2
 pub fn get_cmovnz(reg1: u16, reg2: u16) -> Vec<u8> {
-    get_cmov(reg1, reg2, false)
+    get_cmov(reg1, reg2, 0x45)
 }
 
-/// `z`: if `true`, then generate a `cmovz` opcode;
-/// else, generate a `cmovnz` opcode
-fn get_cmov(reg1: u16, reg2: u16, z: bool) -> Vec<u8> {
+// cmovg reg1, reg2
+pub fn get_cmovg(reg1: u16, reg2: u16) -> Vec<u8> {
+    get_cmov(reg1, reg2, 0x4f)
+}
+
+// cmova reg1, reg2
+pub fn get_cmova(reg1: u16, reg2: u16) -> Vec<u8> {
+    get_cmov(reg1, reg2, 0x47)
+}
+
+/// opbyte specified the flag that controls the condition op
+fn get_cmov(reg1: u16, reg2: u16, opbyte: u8) -> Vec<u8> {
     // cmovz:
     // REX.W + 0F 44 /r
     // cmovnz:
@@ -234,7 +243,7 @@ fn get_cmov(reg1: u16, reg2: u16, z: bool) -> Vec<u8> {
 
     let byte1 = rexw | reg1_bit | reg2_bit;
     let byte2: u8 = 0x0f;
-    let byte3: u8 = if z { 0x44 } else { 0x45 };
+    let byte3: u8 = opbyte;
 
     let reg_chooser: u8 = 0b11000000;
     let reg1_choose: u8 = get_reg_bits(reg1);
