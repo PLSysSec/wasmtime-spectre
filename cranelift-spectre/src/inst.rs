@@ -208,9 +208,19 @@ pub fn get_mov_from_r14(reg: u16) -> &'static [u8] {
     }
 }
 
+// cmove reg1, reg2
+pub fn get_cmove(reg1: u16, reg2: u16) -> Vec<u8> {
+    get_cmov(reg1, reg2, 0x44)
+}
+
 // cmovz reg1, reg2
 pub fn get_cmovz(reg1: u16, reg2: u16) -> Vec<u8> {
     get_cmov(reg1, reg2, 0x44)
+}
+
+// cmovne reg1, reg2
+pub fn get_cmovne(reg1: u16, reg2: u16) -> Vec<u8> {
+    get_cmov(reg1, reg2, 0x45)
 }
 
 // cmovnz reg1, reg2
@@ -223,9 +233,29 @@ pub fn get_cmovg(reg1: u16, reg2: u16) -> Vec<u8> {
     get_cmov(reg1, reg2, 0x4f)
 }
 
-// cmova reg1, reg2
-pub fn get_cmova(reg1: u16, reg2: u16) -> Vec<u8> {
-    get_cmov(reg1, reg2, 0x47)
+// cmovl reg1, reg2
+pub fn get_cmovl(reg1: u16, reg2: u16) -> Vec<u8> {
+    get_cmov(reg1, reg2, 0x4c)
+}
+
+// cmovge reg1, reg2
+pub fn get_cmovge(reg1: u16, reg2: u16) -> Vec<u8> {
+    get_cmov(reg1, reg2, 0x4d)
+}
+
+// cmovle reg1, reg2
+pub fn get_cmovle(reg1: u16, reg2: u16) -> Vec<u8> {
+    get_cmov(reg1, reg2, 0x4e)
+}
+
+// cmovo reg1, reg2
+pub fn get_cmovo(reg1: u16, reg2: u16) -> Vec<u8> {
+    get_cmov(reg1, reg2, 0x40)
+}
+
+// cmovno reg1, reg2
+pub fn get_cmovno(reg1: u16, reg2: u16) -> Vec<u8> {
+    get_cmov(reg1, reg2, 0x41)
 }
 
 /// opbyte specified the flag that controls the condition op

@@ -52,8 +52,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                             cur.remove_inst();
                         }
                         Opcode::Brif => {
-                            // TODO: Need to add a new instruction which does just get_condbr_new_cfi_label_bytes and insert here
-                            // TODO: the final move from the output of above to r14 will be done in a later pass
+                            // A later pass actually injects the cfi instruction
                             cur.set_position(saved_position);
                         }
                         _ => { panic!("Shouldn't ever get here"); },
@@ -229,7 +228,6 @@ fn cfi_inst_checks(
 
     if !opcode.is_terminator()
         && (opcode.is_call() || opcode.is_branch() || opcode.is_indirect_branch())
-        && cur.func.post_inst_guards[*inst].len() == 0
     {
         cur.next_inst();
         let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
@@ -239,11 +237,10 @@ fn cfi_inst_checks(
         cur.func.post_inst_guards[*inst].append(&mut bytes);
     }
 
-    // TODO: || opcode == Opcode::Brif
-    if opcode == Opcode::BrzCfi || opcode == Opcode::BrnzCfi {
+    if opcode == Opcode::BrzCfi || opcode == Opcode::BrnzCfi || opcode == Opcode::Brif {
         let cfi_label_inst = get_previous_cfi_label_inst(cur).unwrap();
-        let br_block = match cur.func.dfg.analyze_branch(*inst) {
-            BranchInfo::SingleDest(dest, _) => dest,
+        let (br_block, varargs) = match cur.func.dfg.analyze_branch(*inst) {
+            BranchInfo::SingleDest(dest, varargs) => (dest,varargs),
             _ => {
                 panic!("Unexpected branch info");
             }
@@ -270,6 +267,8 @@ fn cfi_inst_checks(
 
         let args = cur.func.dfg.inst_args(cfi_label_inst);
         assert!(args.len() == 2, "Expected two CFI labels");
+        let rets = cur.func.dfg.inst_results(cfi_label_inst);
+        let out_regs = get_registers(&cur, divert, &rets);
 
         let original_label0_source = cur.func.dfg.value_def(args[0]);
         let original_label1_source = cur.func.dfg.value_def(args[1]);
@@ -287,14 +286,36 @@ fn cfi_inst_checks(
         cur.func.dfg.replace(original_label1_inst).iconst(types::I64, fallthrough_block_label as i64);
 
         if opcode == Opcode::Brif {
-            // TODO: for brif we have to inject the cmov to r14 on the brif inst's func.pre_inst_guards
-            // let cond_code = ir::condcodes::IntCC::UnsignedGreaterThan;
-            // let _cmov_bytes =
-            //     match cond_code {
-            //         ir::condcodes::IntCC::UnsignedGreaterThan => { cranelift_spectre::inst::get_cmovg(reg0, reg1) }
-            //         _ => { panic!("Not impl") }
-            //     };
+            use ir::InstructionData::*;
+            let cond_code: ir::condcodes::IntCC = match &cur.func.dfg[*inst] {
+                BranchInt {
+                    opcode,
+                    args,
+                    cond,
+                    destination,
+                } => {
+                    cond.clone()
+                },
+                _ => panic!("unexpected instruction in cfi brif"),
+            };
 
+            use cranelift_spectre::inst::*;
+            let label_reg = out_regs[0];
+            let mut cmov_bytes =
+                match cond_code.unsigned() {
+                    ir::condcodes::IntCC::Equal => { get_cmove(R_R14, label_reg) },
+                    ir::condcodes::IntCC::NotEqual => { get_cmovne(R_R14, label_reg) },
+                    ir::condcodes::IntCC::UnsignedLessThan => { get_cmovl(R_R14, label_reg) },
+                    ir::condcodes::IntCC::UnsignedGreaterThanOrEqual => { get_cmovge(R_R14, label_reg) },
+                    ir::condcodes::IntCC::UnsignedGreaterThan => { get_cmovg(R_R14, label_reg) },
+                    ir::condcodes::IntCC::UnsignedLessThanOrEqual => { get_cmovle(R_R14, label_reg) },
+                    ir::condcodes::IntCC::Overflow => { get_cmovo(R_R14, label_reg) },
+                    ir::condcodes::IntCC::NotOverflow => { get_cmovno(R_R14, label_reg) },
+                    _ => {
+                        panic!("Not impl")
+                    }
+                };
+            cur.func.pre_inst_guards[*inst].append(&mut cmov_bytes);
         }
     }
     else if opcode == Opcode::Jump || opcode == Opcode::Fallthrough {
