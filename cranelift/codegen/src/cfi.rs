@@ -20,17 +20,13 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
             let opcode = cur.func.dfg[inst].opcode();
             match opcode {
                 Opcode::Brz | Opcode::Brnz | Opcode::Brif | Opcode::Brff => {
-                    let saved_position =
-                        if opcode == Opcode::Brif || opcode == Opcode::Brff{
-                            // if its a brif, prev inst is a cmp
-                            // prev inst could be setting various flags
-                            // we can't add new instructions between after flag set
-                            let ret = cur.position();
-                            set_prev_valid_insert_point(&mut cur);
-                            ret
-                        } else {
-                            cur.position()
-                        };
+                    let saved_position = cur.position();
+                    if opcode == Opcode::Brif || opcode == Opcode::Brff {
+                        // if its a brif, prev inst is a cmp
+                        // prev inst could be setting various flags
+                        // we can't add new instructions between after flag set
+                        set_prev_valid_insert_point(&mut cur);
+                    }
                     let block1_label = cur.ins().iconst(types::I64, REPLACE_LABEL_1 as i64);
                     let block2_label = cur.ins().iconst(types::I64, REPLACE_LABEL_2 as i64);
                     let new_label = cur
@@ -40,7 +36,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                     let brinfo = cur.func.dfg.analyze_branch(inst);
                     let (dest, varargs) = match brinfo {
                         BranchInfo::SingleDest(dest, varargs) => (dest, varargs),
-                        _ => panic!("Expected Brz / Brnz to be a SingleDest"),
+                        _ => panic!("Expected conditional branch to be a SingleDest"),
                     };
                     let varargs: Vec<Value> = varargs.to_vec(); // end immutable borrow of cur
                     let condition = cur.func.dfg.inst_args(inst)[0];
@@ -110,35 +106,29 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
 }
 
 fn get_previous_opcode(cur: &mut EncCursor) -> Option<Opcode> {
-    let saved_position = cur.position();
-    let opcode = cur.prev_inst().map(|inst| {
-        cur.func.dfg[inst].opcode()
-    });
-    cur.set_position(saved_position);
-    opcode
+    get_prev_inst(cur).map(|inst| cur.func.dfg[inst].opcode())
 }
 
 fn set_prev_valid_insert_point(cur: &mut EncCursor) {
     let mut seen_write_flags = false;
     loop {
-        let inst = cur.current_inst();
-        if inst.is_none() {
-            let block = cur.current_block().unwrap();
-            cur.goto_first_insertion_point(block);
-            return;
+        match cur.current_inst() {
+            None => {
+                let block = cur.current_block().unwrap();
+                cur.goto_first_insertion_point(block);
+                return;
+            }
+            Some(inst) => {
+                if seen_write_flags {
+                    return;
+                }
+                let opcode = cur.func.dfg[inst].opcode();
+                if opcode.writes_cpu_flags() {
+                    seen_write_flags = true;
+                }
+                cur.prev_inst();
+            }
         }
-        if seen_write_flags {
-            return;
-        }
-
-        let inst = inst.unwrap();
-        let opcode = cur.func.dfg[inst].opcode();
-
-        if opcode.writes_cpu_flags() {
-            seen_write_flags = true;
-        }
-
-        cur.prev_inst();
     }
 }
 
@@ -153,17 +143,14 @@ pub fn do_cfi_number_allocate(func: &mut Function, cfi_start_num: &mut u64) {
         while let Some(inst) = cur.next_inst() {
             let opcode = cur.func.dfg[inst].opcode();
 
-            if !opcode.is_terminator()
-            {
-                if opcode.is_branch() || opcode.is_indirect_branch()
-                {
+            if !opcode.is_terminator() {
+                if opcode.is_branch() || opcode.is_indirect_branch() {
                     cur.func.cfi_inst_nums[inst] = Some(FIXED_LABEL);//Some(*cfi_start_num);
                     *cfi_start_num += 1;
                 }
             }
 
-            if opcode.is_call()
-            {
+            if opcode.is_call() {
                 cur.func.cfi_inst_nums[inst] = Some(RETURN_LABEL);
             }
         }
@@ -464,7 +451,7 @@ fn get_previous_conditional_cfi_label_inst(cur: &mut FuncCursor) -> Option<Inst>
 }
 
 /// "Peeks" the next instruction without actually moving the cursor
-fn get_next_inst(cur: &mut FuncCursor) -> Option<Inst> {
+fn get_next_inst(cur: &mut impl Cursor) -> Option<Inst> {
     let saved_position = cur.position();
     let inst = cur.next_inst();
     cur.set_position(saved_position);
@@ -472,7 +459,7 @@ fn get_next_inst(cur: &mut FuncCursor) -> Option<Inst> {
 }
 
 /// "Peeks" the prev instruction without actually moving the cursor
-fn get_prev_inst(cur: &mut FuncCursor) -> Option<Inst> {
+fn get_prev_inst(cur: &mut impl Cursor) -> Option<Inst> {
     let saved_position = cur.position();
     let inst = cur.prev_inst();
     cur.set_position(saved_position);
