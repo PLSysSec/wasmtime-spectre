@@ -273,7 +273,7 @@ fn cfi_inst_checks(
         let args = cur.func.dfg.inst_args(cfi_label_inst);
         assert!(args.len() == 2, "Expected two CFI labels");
         let rets = cur.func.dfg.inst_results(cfi_label_inst);
-        let out_regs = get_registers(&cur, divert, &rets);
+        let out_regs = get_registers(&cur.func, divert, &rets);
 
         let original_label0_source = cur.func.dfg.value_def(args[0]);
         let original_label1_source = cur.func.dfg.value_def(args[1]);
@@ -466,10 +466,10 @@ fn get_prev_inst(cur: &mut impl Cursor) -> Option<Inst> {
     inst
 }
 
-fn get_registers(cur: &FuncCursor, divert: &RegDiversions, values: &[Value]) -> Vec<RegUnit> {
+fn get_registers(func: &Function, divert: &RegDiversions, values: &[Value]) -> Vec<RegUnit> {
     let mut regs = vec![];
     for value in values {
-        let v = divert.get(*value, &cur.func.locations);
+        let v = divert.get(*value, &func.locations);
         match v {
             ValueLoc::Reg(r) => regs.push(r),
             _ => (),
@@ -478,8 +478,7 @@ fn get_registers(cur: &FuncCursor, divert: &RegDiversions, values: &[Value]) -> 
     regs
 }
 
-fn is_heap_op(isa: &dyn TargetIsa, func: &Function, in_regs: &[RegUnit], inst: Inst) -> bool {
-    let opcode = func.dfg[inst].opcode();
+fn is_heap_op(isa: &dyn TargetIsa, opcode: Opcode, in_regs: &[RegUnit]) -> bool {
     let r15 = isa.register_info().parse_regunit("r15").unwrap();
     if opcode.can_load() || opcode.can_store() {
         in_regs.iter().any(|&r| r == r15)
@@ -488,8 +487,7 @@ fn is_heap_op(isa: &dyn TargetIsa, func: &Function, in_regs: &[RegUnit], inst: I
     }
 }
 
-fn is_stack_op(isa: &dyn TargetIsa, func: &Function, in_regs: &[RegUnit], inst: Inst) -> bool {
-    let opcode = func.dfg[inst].opcode();
+fn is_stack_op(isa: &dyn TargetIsa, opcode: Opcode, in_regs: &[RegUnit]) -> bool {
     let rsp = isa.register_info().parse_regunit("rsp").unwrap();
     if opcode.can_load() || opcode.can_store() {
         opcode == Opcode::X86Push
@@ -526,14 +524,14 @@ fn is_heap_or_stack_op_before_next_ctrl_flow(
             break;
         }
         let cur_inst = cur_inst.unwrap();
+        let opcode = cur.func.dfg[cur_inst].opcode();
         let args = cur.func.dfg.inst_args(cur_inst);
-        let in_regs = get_registers(cur, &divert, args);
+        let in_regs = get_registers(&cur.func, &divert, args);
         let _rets = cur.func.dfg.inst_results(cur_inst);
-        let _out_regs = get_registers(&cur, &divert, _rets);
-        let _opcode = cur.func.dfg[cur_inst].opcode();
+        let _out_regs = get_registers(&cur.func, &divert, _rets);
 
-        found_heap_op |= is_heap_op(isa, &cur.func, &in_regs, cur_inst);
-        found_stack_op |= is_stack_op(isa, &cur.func, &in_regs, cur_inst);
+        found_heap_op |= is_heap_op(isa, opcode, &in_regs);
+        found_stack_op |= is_stack_op(isa, opcode, &in_regs);
 
         if found_heap_op {
             let _a = 1;
@@ -541,7 +539,6 @@ fn is_heap_or_stack_op_before_next_ctrl_flow(
         if found_stack_op {
             let _a = 1;
         }
-        let opcode = cur.func.dfg[cur_inst].opcode();
         if opcode.is_terminator()
             || opcode.is_branch()
             || opcode.is_indirect_branch()
