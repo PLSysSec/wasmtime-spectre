@@ -8,5 +8,6 @@
 .align 16
 invoke_lfence:
 _invoke_lfence:
+    endbr64
     lfence
     ret
