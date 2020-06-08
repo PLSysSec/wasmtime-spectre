@@ -357,8 +357,7 @@ fn cfi_inst_checks(
                 };
             cur.func.pre_inst_guards[*inst].append(&mut cmov_bytes);
         }
-    }
-    else if opcode == Opcode::Jump || opcode == Opcode::Fallthrough || opcode == Opcode::Call || opcode == Opcode::CallIndirect {
+    } else if opcode == Opcode::Jump || opcode == Opcode::Fallthrough || opcode == Opcode::Call || opcode == Opcode::CallIndirect {
         let _a = 1;
         let cfi_label_inst = get_previous_conditional_cfi_label_inst(cur);
         if cfi_label_inst.is_none() { return; }
@@ -387,6 +386,8 @@ fn cfi_inst_checks(
         };
 
         cur.func.dfg.replace(original_label0_inst).iconst(types::I64, br_block_label as i64);
+    } else if opcode.is_branch() {
+        panic!("Shouldn't see any conditonal branch opcode here, they should all have been either handled in one of the above ifs or not exist during this pass. Found a {}", opcode);
     }
 }
 
