@@ -51,30 +51,29 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                     match opcode {
                         Opcode::Brz => {
                             let condition = cur.func.dfg.inst_args(inst)[0];
-                            cur.ins().brz_cfi(condition, new_label, dest, &varargs[..]);
+                            cur.func.dfg.replace(inst).brz_cfi(condition, new_label, dest, &varargs[..]);
                         }
                         Opcode::Brnz => {
                             let condition = cur.func.dfg.inst_args(inst)[0];
-                            cur.ins().brnz_cfi(condition, new_label, dest, &varargs[..]);
+                            cur.func.dfg.replace(inst).brnz_cfi(condition, new_label, dest, &varargs[..]);
                         }
                         Opcode::Brif => {
                             let condition = match &cur.func.dfg[inst] {
                                 InstructionData::BranchInt { cond, .. } => *cond,
                                 idata => panic!("Expected BranchInt, got {:?}", idata),
                             };
-                            cur.ins().brif_cfi(condition, flags.unwrap(), new_label, dest, &varargs[..]);
+                            cur.func.dfg.replace(inst).brif_cfi(condition, flags.unwrap(), new_label, dest, &varargs[..]);
                         }
                         Opcode::Brff => {
                             let condition = match &cur.func.dfg[inst] {
                                 InstructionData::BranchFloat { cond, .. } => *cond,
                                 idata => panic!("Expected BranchFloat, got {:?}", idata),
                             };
-                            cur.ins().brff_cfi(condition, flags.unwrap(), new_label, dest, &varargs[..]);
+                            cur.func.dfg.replace(inst).brff_cfi(condition, flags.unwrap(), new_label, dest, &varargs[..]);
                         }
                         _ => { panic!("Shouldn't ever get here"); },
                     }
                     cur.set_position(saved_position);
-                    cur.remove_inst();
                 }
                 Opcode::BrIcmp => {
                     unimplemented!("BrIcmp in do_condbr_cfi pass")
