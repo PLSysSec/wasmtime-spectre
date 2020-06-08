@@ -2410,7 +2410,7 @@ fn define_control_flow(
     e.enc_i32_i64_explicit_rex(brz, rec_tjccb.opcodes(&JUMP_SHORT_IF_EQUAL));
     e.enc_i32_i64_explicit_rex(brz_cfi, rec_tjccb_cfi.opcodes(&JUMP_SHORT_IF_EQUAL));
     e.enc_i32_i64_explicit_rex(brz, rec_tjccd.opcodes(&TEST_BYTE_REG));
-    e.enc_i32_i64_explicit_rex(brz_cfi, rec_tjccd_cfi.opcodes(&JUMP_SHORT_IF_EQUAL));
+    e.enc_i32_i64_explicit_rex(brz_cfi, rec_tjccd_cfi.opcodes(&TEST_BYTE_REG));
     e.enc_i32_i64_explicit_rex(brnz, rec_tjccb.opcodes(&JUMP_SHORT_IF_NOT_EQUAL));
     e.enc_i32_i64_explicit_rex(brnz_cfi, rec_tjccb_cfi.opcodes(&JUMP_SHORT_IF_NOT_EQUAL));
     e.enc_i32_i64_explicit_rex(brnz, rec_tjccd.opcodes(&TEST_REG));
