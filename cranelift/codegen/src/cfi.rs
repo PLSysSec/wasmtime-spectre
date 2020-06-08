@@ -7,6 +7,10 @@ use alloc::vec::Vec;
 
 use crate::regalloc::RegDiversions;
 
+const FIRST_BLOCK_LABEL: u64 = 4;
+const REPLACE_LABEL_1: u64 = 5;
+const REPLACE_LABEL_2: u64 = 6;
+
 pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
     while let Some(_block) = cur.next_block() {
@@ -25,8 +29,8 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                         } else {
                             cur.position()
                         };
-                    let block1_label = cur.ins().iconst(types::I64, 42); // 42 standing in for the real label
-                    let block2_label = cur.ins().iconst(types::I64, 54); // 54 standing in for the real label
+                    let block1_label = cur.ins().iconst(types::I64, REPLACE_LABEL_1 as i64);
+                    let block2_label = cur.ins().iconst(types::I64, REPLACE_LABEL_2 as i64);
                     let new_label = cur
                         .ins()
                         .condbr_get_new_cfi_label(block1_label, block2_label);
@@ -74,7 +78,7 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
          let term = cur.current_inst().unwrap();
          let opcode = cur.func.dfg[term].opcode();
          match opcode {
-             Opcode::Jump | Opcode::Fallthrough => {
+             Opcode::Jump | Opcode::Fallthrough | Opcode::Call => {
                  match get_previous_opcode(&mut cur) {
                      Some(Opcode::Brz)
                      | Some(Opcode::BrzCfi)
@@ -89,7 +93,7 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                     }
                      _ => {
                         // we need to handle cfi label ourselves
-                        let new_label = cur.ins().iconst(types::I64, 42); // 42 standing in for the real label
+                        let new_label = cur.ins().iconst(types::I64, REPLACE_LABEL_1 as i64);
                         cur.ins().conditionally_set_cfi_label(new_label);
                      }
                  }
@@ -206,12 +210,12 @@ fn cfi_block_checks(isa: &dyn TargetIsa, cur: &mut FuncCursor, divert: &RegDiver
 
     let block = cur.current_block().unwrap();
     // Add the cfi check fpr each block
-    if !is_first_block && cur.func.block_guards[block].len() == 0 {
+    if cur.func.block_guards[block].len() == 0 {
         let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
         // if cur.func.cfi_block_nums[block].is_none() {
         //     let _a = 1;
         // }
-        let label = cur.func.cfi_block_nums[block].unwrap();
+        let label = if is_first_block { FIRST_BLOCK_LABEL } else { cur.func.cfi_block_nums[block].unwrap() };
         let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, zero_heap, zero_stack);
         cur.func.block_guards[block].append(&mut bytes);
     }
@@ -362,20 +366,24 @@ fn cfi_inst_checks(
             cur.func.pre_inst_guards[*inst].append(&mut cmov_bytes);
         }
     }
-    else if opcode == Opcode::Jump || opcode == Opcode::Fallthrough {
+    else if opcode == Opcode::Jump || opcode == Opcode::Fallthrough || opcode == Opcode::Call {
         let _a = 1;
         let cfi_label_inst = get_previous_conditional_cfi_label_inst(cur);
         if cfi_label_inst.is_none() { return; }
         let cfi_label_inst = cfi_label_inst.unwrap();
 
-        let br_block = match cur.func.dfg.analyze_branch(*inst) {
-            BranchInfo::SingleDest(dest, _) => dest,
-            _ => {
-                panic!("Unexpected branch info");
-            }
-        };
+        let br_block_label =  if opcode != Opcode::Call {
+            let br_block = match cur.func.dfg.analyze_branch(*inst) {
+                BranchInfo::SingleDest(dest, _) => dest,
+                _ => {
+                    panic!("Unexpected branch info");
+                }
+            };
 
-        let br_block_label = cur.func.cfi_block_nums[br_block].unwrap();
+            cur.func.cfi_block_nums[br_block].unwrap()
+        } else {
+            FIRST_BLOCK_LABEL
+        };
         let args = cur.func.dfg.inst_args(cfi_label_inst);
 
         // cfi_label_inst may be CondbrGetNewCfiLabel or ConditionallySetCfiLabel
