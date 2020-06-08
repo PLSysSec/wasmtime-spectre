@@ -13,9 +13,9 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
         while let Some(inst) = cur.next_inst() {
             let opcode = cur.func.dfg[inst].opcode();
             match opcode {
-                Opcode::Brz | Opcode::Brnz | Opcode::Brif => {
+                Opcode::Brz | Opcode::Brnz | Opcode::Brif | Opcode::Brff => {
                     let saved_position =
-                        if opcode == Opcode::Brif {
+                        if opcode == Opcode::Brif || opcode == Opcode::Brff{
                             // if its a brif, prev inst is a cmp
                             // prev inst could be setting various flags
                             // we can't add new instructions between after flag set
@@ -51,7 +51,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                             cur.set_position(saved_position);
                             cur.remove_inst();
                         }
-                        Opcode::Brif => {
+                        Opcode::Brif | Opcode::Brff => {
                             // A later pass actually injects the cfi instruction
                             cur.set_position(saved_position);
                         }
@@ -59,9 +59,6 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                     }
                 }
                 Opcode::BrIcmp => {
-                    let _a = 1;
-                }
-                Opcode::Brff => {
                     let _a = 1;
                 }
                 _ => {}
@@ -112,6 +109,7 @@ fn get_previous_opcode(cur: &mut EncCursor) -> Option<Opcode> {
 }
 
 fn set_prev_valid_insert_point(cur: &mut EncCursor) {
+    let mut seen_write_flags = false;
     loop {
         let inst = cur.current_inst();
         if inst.is_none() {
@@ -119,11 +117,15 @@ fn set_prev_valid_insert_point(cur: &mut EncCursor) {
             cur.goto_first_insertion_point(block);
             return;
         }
+        if seen_write_flags {
+            return;
+        }
+
         let inst = inst.unwrap();
         let opcode = cur.func.dfg[inst].opcode();
 
-        if !(opcode.writes_cpu_flags() || opcode.is_branch() || opcode == Opcode::Bint || opcode == Opcode::Trueif) {
-            return;
+        if opcode.writes_cpu_flags() {
+            seen_write_flags = true;
         }
 
         cur.prev_inst();
@@ -237,10 +239,10 @@ fn cfi_inst_checks(
         cur.func.post_inst_guards[*inst].append(&mut bytes);
     }
 
-    if opcode == Opcode::BrzCfi || opcode == Opcode::BrnzCfi || opcode == Opcode::Brif {
+    if opcode == Opcode::BrzCfi || opcode == Opcode::BrnzCfi || opcode == Opcode::Brif || opcode == Opcode::Brff {
         let cfi_label_inst = get_previous_cfi_label_inst(cur).unwrap();
-        let (br_block, varargs) = match cur.func.dfg.analyze_branch(*inst) {
-            BranchInfo::SingleDest(dest, varargs) => (dest,varargs),
+        let br_block = match cur.func.dfg.analyze_branch(*inst) {
+            BranchInfo::SingleDest(dest, varargs) => dest,
             _ => {
                 panic!("Unexpected branch info");
             }
@@ -289,10 +291,10 @@ fn cfi_inst_checks(
             use ir::InstructionData::*;
             let cond_code: ir::condcodes::IntCC = match &cur.func.dfg[*inst] {
                 BranchInt {
-                    opcode,
-                    args,
+                    opcode: _,
+                    args: _,
                     cond,
-                    destination,
+                    destination: _,
                 } => {
                     cond.clone()
                 },
@@ -305,14 +307,56 @@ fn cfi_inst_checks(
                 match cond_code.unsigned() {
                     ir::condcodes::IntCC::Equal => { get_cmove(R_R14, label_reg) },
                     ir::condcodes::IntCC::NotEqual => { get_cmovne(R_R14, label_reg) },
-                    ir::condcodes::IntCC::UnsignedLessThan => { get_cmovl(R_R14, label_reg) },
-                    ir::condcodes::IntCC::UnsignedGreaterThanOrEqual => { get_cmovge(R_R14, label_reg) },
-                    ir::condcodes::IntCC::UnsignedGreaterThan => { get_cmovg(R_R14, label_reg) },
-                    ir::condcodes::IntCC::UnsignedLessThanOrEqual => { get_cmovle(R_R14, label_reg) },
+                    ir::condcodes::IntCC::UnsignedLessThan => { get_cmovb(R_R14, label_reg) },
+                    ir::condcodes::IntCC::UnsignedGreaterThanOrEqual => { get_cmovae(R_R14, label_reg) },
+                    ir::condcodes::IntCC::UnsignedGreaterThan => { get_cmova(R_R14, label_reg) },
+                    ir::condcodes::IntCC::UnsignedLessThanOrEqual => { get_cmovbe(R_R14, label_reg) },
                     ir::condcodes::IntCC::Overflow => { get_cmovo(R_R14, label_reg) },
                     ir::condcodes::IntCC::NotOverflow => { get_cmovno(R_R14, label_reg) },
                     _ => {
                         panic!("Not impl")
+                    }
+                };
+            cur.func.pre_inst_guards[*inst].append(&mut cmov_bytes);
+        }
+        else if opcode == Opcode::Brff {
+            use ir::InstructionData::*;
+            let cond_code: ir::condcodes::FloatCC = match &cur.func.dfg[*inst] {
+                BranchFloat {
+                    opcode: _,
+                    args: _,
+                    cond,
+                    destination: _,
+                } => {
+                    cond.clone()
+                },
+                _ => panic!("unexpected instruction in cfi brif"),
+            };
+
+            let _prev = get_prev_inst(cur);
+            let _prev_opcode =  cur.func.dfg[_prev.unwrap_or(*inst)].opcode();
+
+            use cranelift_spectre::inst::*;
+            let label_reg = out_regs[0];
+            let mut cmov_bytes =
+                match cond_code {
+                    ir::condcodes::FloatCC::Ordered => { get_cmovnp(R_R14, label_reg) },
+                    ir::condcodes::FloatCC::Unordered => { get_cmovp(R_R14, label_reg) },
+                    ir::condcodes::FloatCC::Equal => { get_cmove(R_R14, label_reg) },
+                    ir::condcodes::FloatCC::NotEqual => { get_cmovne(R_R14, label_reg) },
+                    ir::condcodes::FloatCC::OrderedNotEqual => { get_cmovne(R_R14, label_reg) },
+                    ir::condcodes::FloatCC::UnorderedOrEqual => { get_cmove(R_R14, label_reg) },
+                    ir::condcodes::FloatCC::LessThan => { get_cmovb(R_R14, label_reg) },
+                    ir::condcodes::FloatCC::LessThanOrEqual => { get_cmovbe(R_R14, label_reg) },
+                    ir::condcodes::FloatCC::GreaterThan => { get_cmova(R_R14, label_reg) },
+                    ir::condcodes::FloatCC::GreaterThanOrEqual => { get_cmovae(R_R14, label_reg) },
+                    ir::condcodes::FloatCC::UnorderedOrLessThan => { get_cmovb(R_R14, label_reg) },
+                    ir::condcodes::FloatCC::UnorderedOrLessThanOrEqual => { get_cmovbe(R_R14, label_reg) },
+                    ir::condcodes::FloatCC::UnorderedOrGreaterThan => { get_cmova(R_R14, label_reg) },
+                    ir::condcodes::FloatCC::UnorderedOrGreaterThanOrEqual => { get_cmovae(R_R14, label_reg) },
+                    _ => {
+                        let _a = 1;
+                        panic!("Not impl");
                     }
                 };
             cur.func.pre_inst_guards[*inst].append(&mut cmov_bytes);
@@ -407,6 +451,14 @@ fn get_previous_conditional_cfi_label_inst(cur: &mut FuncCursor) -> Option<Inst>
 fn get_next_inst(cur: &mut FuncCursor) -> Option<Inst> {
     let saved_position = cur.position();
     let inst = cur.next_inst();
+    cur.set_position(saved_position);
+    inst
+}
+
+/// "Peeks" the prev instruction without actually moving the cursor
+fn get_prev_inst(cur: &mut FuncCursor) -> Option<Inst> {
+    let saved_position = cur.position();
+    let inst = cur.prev_inst();
     cur.set_position(saved_position);
     inst
 }
