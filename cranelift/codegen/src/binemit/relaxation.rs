@@ -130,7 +130,13 @@ fn get_registers(cur: &FuncCursor, divert: &RegDiversions, values: &[Value]) -> 
 fn is_heap_op(isa: &dyn TargetIsa, func: &Function, in_regs: &[RegUnit], inst: Inst) -> bool {
     let opcode = func.dfg[inst].opcode();
     let r15 = isa.register_info().parse_regunit("r15").unwrap();
-    if opcode.can_load() || opcode.can_store() {
+    if opcode.can_load() || opcode.can_store() &&
+        !(opcode == Opcode::X86Push
+        || opcode == Opcode::X86Pop
+        || opcode == Opcode::Spill
+        || opcode == Opcode::Fill
+        || opcode == Opcode::Regspill
+        || opcode == Opcode::Regfill) {
         in_regs.iter().any(|&r| r == r15)
     } else {
         false
