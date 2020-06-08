@@ -1,4 +1,4 @@
-use crate::cursor::{Cursor, EncCursor, FuncCursor};
+use crate::cursor::{Cursor, EncCursor};
 use crate::ir::{self, Inst, InstBuilder, Value, ValueDef, ValueLoc, types};
 use crate::ir::function::Function;
 use crate::ir::instructions::{BranchInfo, Opcode};
@@ -76,7 +76,7 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
             let opcode = cur.func.dfg[inst].opcode();
             match opcode {
                 Opcode::Jump | Opcode::Fallthrough | Opcode::Call | Opcode::CallIndirect => {
-                    match get_previous_opcode(&mut cur) {
+                    match get_prev_opcode(&mut cur) {
                         Some(Opcode::Brz)
                         | Some(Opcode::BrzCfi)
                         | Some(Opcode::Brnz)
@@ -105,10 +105,6 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
      }
 }
 
-fn get_previous_opcode(cur: &mut EncCursor) -> Option<Opcode> {
-    get_prev_inst(cur).map(|inst| cur.func.dfg[inst].opcode())
-}
-
 fn set_prev_valid_insert_point(cur: &mut EncCursor) {
     let mut seen_write_flags = false;
     loop {
@@ -133,8 +129,8 @@ fn set_prev_valid_insert_point(cur: &mut EncCursor) {
 }
 
 // Assign a unique Cfi number to each linear blocks
-pub fn do_cfi_number_allocate(func: &mut Function, cfi_start_num: &mut u64) {
-    let mut cur = FuncCursor::new(func);
+pub fn do_cfi_number_allocate(func: &mut Function, isa: &dyn TargetIsa, cfi_start_num: &mut u64) {
+    let mut cur = EncCursor::new(func, isa);
 
     while let Some(block) = cur.next_block() {
         cur.func.cfi_block_nums[block] =  Some(FIXED_LABEL);//Some(*cfi_start_num);
@@ -159,7 +155,7 @@ pub fn do_cfi_number_allocate(func: &mut Function, cfi_start_num: &mut u64) {
 
 
 pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indirectly_called: bool) {
-    let mut cur = FuncCursor::new(func);
+    let mut cur = EncCursor::new(func, isa);
     let mut divert = RegDiversions::new();
 
     let mut first_inst_in_func = true;
@@ -192,7 +188,7 @@ pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indire
 
 fn cfi_func_checks(
     isa: &dyn TargetIsa,
-    cur: &mut FuncCursor,
+    cur: &mut EncCursor,
     divert: &RegDiversions,
     can_be_indirectly_called: bool,
 ) {
@@ -205,7 +201,7 @@ fn cfi_func_checks(
     }
 }
 
-fn cfi_block_checks(isa: &dyn TargetIsa, cur: &mut FuncCursor, divert: &RegDiversions, is_first_block: bool) {
+fn cfi_block_checks(isa: &dyn TargetIsa, cur: &mut EncCursor, divert: &RegDiversions, is_first_block: bool) {
     let saved_cursor_position = cur.position();
 
     let block = cur.current_block().unwrap();
@@ -225,14 +221,15 @@ fn cfi_block_checks(isa: &dyn TargetIsa, cur: &mut FuncCursor, divert: &RegDiver
 
 fn cfi_inst_checks(
     isa: &dyn TargetIsa,
-    cur: &mut FuncCursor,
+    cur: &mut EncCursor,
     divert: &RegDiversions,
     inst: &Inst,
 ) {
     let opcode = cur.func.dfg[*inst].opcode();
     let _format = opcode.format();
 
-    if opcode.is_call() || (!opcode.is_terminator() && (opcode.is_branch() || opcode.is_indirect_branch()))
+    if !opcode.is_terminator()
+        && (opcode.is_call() || is_condbr_followed_by_non_jump_or_fallthrough(cur, opcode))
     {
         cur.next_inst();
         let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
@@ -394,7 +391,7 @@ fn cfi_inst_checks(
 }
 
 
-fn get_previous_cfi_label_inst(cur: &mut FuncCursor) -> Option<Inst> {
+fn get_previous_cfi_label_inst(cur: &mut EncCursor) -> Option<Inst> {
     // get prev inst which is opcode == Opcode::CondbrGetNewCfiLabel
     // this should be in the same block, so only iterate in this block
     let saved_cursor_position = cur.position();
@@ -419,7 +416,7 @@ fn get_previous_cfi_label_inst(cur: &mut FuncCursor) -> Option<Inst> {
 
 // Get previous conditionally_set_cfi_label for a jump if it exists
 // If the previous instruction is a conditional branch this won't exist
-fn get_previous_conditional_cfi_label_inst(cur: &mut FuncCursor) -> Option<Inst> {
+fn get_previous_conditional_cfi_label_inst(cur: &mut EncCursor) -> Option<Inst> {
     let saved_cursor_position = cur.position();
 
     let found = loop {
@@ -464,6 +461,14 @@ fn get_prev_inst(cur: &mut impl Cursor) -> Option<Inst> {
     let inst = cur.prev_inst();
     cur.set_position(saved_position);
     inst
+}
+
+fn get_next_opcode(cur: &mut EncCursor) -> Option<Opcode> {
+    get_next_inst(cur).map(|inst| cur.func.dfg[inst].opcode())
+}
+
+fn get_prev_opcode(cur: &mut EncCursor) -> Option<Opcode> {
+    get_prev_inst(cur).map(|inst| cur.func.dfg[inst].opcode())
 }
 
 fn get_registers(func: &Function, divert: &RegDiversions, values: &[Value]) -> Vec<RegUnit> {
@@ -512,7 +517,7 @@ fn is_stack_op(isa: &dyn TargetIsa, opcode: Opcode, in_regs: &[RegUnit]) -> bool
 /// Preserves the cursor position.
 fn is_heap_or_stack_op_before_next_ctrl_flow(
     isa: &dyn TargetIsa,
-    cur: &mut FuncCursor,
+    cur: &mut EncCursor,
     divert: &RegDiversions,
 ) -> (bool, bool) {
     let saved_cursor_position = cur.position();
@@ -552,4 +557,16 @@ fn is_heap_or_stack_op_before_next_ctrl_flow(
     // Restore the cursor position and return
     cur.set_position(saved_cursor_position);
     return (found_heap_op, found_stack_op);
+}
+
+fn is_condbr_followed_by_non_jump_or_fallthrough(cur: &mut EncCursor, opcode: Opcode) -> bool {
+    if opcode.is_branch() || opcode.is_indirect_branch() {
+        match get_next_opcode(cur) {
+            Some(Opcode::Jump) | Some(Opcode::Fallthrough) => false,
+            None => panic!("Condbr is last instruction in block, which shouldn't happen"),
+            _ => true,
+        }
+    } else {
+        false
+    }
 }

@@ -237,7 +237,7 @@ impl Context {
             }
 
             if pht_mitigation == SpectrePHTMitigation::CFI {
-                self.cfi_number_allocate(cfi_start_num)?;
+                self.cfi_number_allocate(isa, cfi_start_num)?;
                 self.cfi_add_checks(isa, can_be_indirectly_called)?;
             }
 
@@ -482,8 +482,8 @@ impl Context {
     }
 
     /// Perform the CFI numbering pass.
-    pub fn cfi_number_allocate(&mut self, start_num: &mut u64) -> CodegenResult<()> {
-        do_cfi_number_allocate(&mut self.func, start_num);
+    pub fn cfi_number_allocate(&mut self, isa: &dyn TargetIsa, start_num: &mut u64) -> CodegenResult<()> {
+        do_cfi_number_allocate(&mut self.func, isa, start_num);
         Ok(())
     }
 
