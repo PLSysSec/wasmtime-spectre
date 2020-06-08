@@ -80,6 +80,9 @@ pub struct Function {
     /// If vec length is > 0, instruction is replaced with bytes in vec.
     pub replacement: SecondaryMap<Inst, Vec<u8>>,
 
+    /// Used for spectre resistance. Whether this return is replaced with pop,jmp.
+    pub ret_replaced: SecondaryMap<Inst, bool>,
+
     /// Used for spectre resistance. Set of registers to truncate to 32-bits before using the instruction.
     pub registers_to_truncate: SecondaryMap<Inst, Vec<u16>>,
 
@@ -166,6 +169,7 @@ impl Function {
             pre_endbranch: SecondaryMap::new(),
             block_endbranch: SecondaryMap::new(),
             replacement: SecondaryMap::new(),
+            ret_replaced: SecondaryMap::new(),
             registers_to_truncate: SecondaryMap::new(),
             brtable_no_bounds_check: SecondaryMap::new(),
             block_guards: SecondaryMap::new(),
@@ -201,6 +205,7 @@ impl Function {
         self.pre_endbranch.clear();
         self.block_endbranch.clear();
         self.replacement.clear();
+        self.ret_replaced.clear();
         self.registers_to_truncate.clear();
         self.brtable_no_bounds_check.clear();
         self.block_guards.clear();

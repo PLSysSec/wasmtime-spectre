@@ -328,11 +328,6 @@ fn get_cmov(reg1: u16, reg2: u16, opbyte: u8) -> Vec<u8> {
 /// `zero_r15`: whether to zero `r15` if the CFI label is wrong
 /// `zero_rsp`: whether to zero `rsp` if the CFI label is wrong
 pub fn get_cfi_check_bytes(label: u64, zero_r15: bool, zero_rsp: bool) -> Vec<u8> {
-    if !zero_r15 && !zero_rsp {
-        // if we're not zeroing anything, we don't even need to check the label
-        return Vec::new();
-    }
-
     // we are using 32-bit labels for now
     let label = label as u32;
 

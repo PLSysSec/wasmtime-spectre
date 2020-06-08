@@ -579,7 +579,7 @@ where
         TS: binemit::TrapSink,
     {
         let _func_name = &self.contents.functions[func].decl.name;
-        if _func_name == "guest_func_wctomb" {
+        if _func_name.starts_with("guest_func___main_void") {
             let _s = _func_name;
             // println!("Found: {}", s);
         }

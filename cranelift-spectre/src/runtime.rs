@@ -3,6 +3,8 @@ use std::cell::RefCell;
 use std::mem::MaybeUninit;
 use std::thread_local;
 
+pub const CFI_START_FUNC_LABEL: u64 = 10;
+
 extern "C" {
     pub fn pthread_yield();
 }

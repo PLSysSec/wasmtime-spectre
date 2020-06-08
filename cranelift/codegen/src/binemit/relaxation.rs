@@ -102,9 +102,10 @@ fn spectre_resistance_on_inst(
             }
         }
         SpectreMitigation::SFI => {
-            if opcode.is_return() && cur.func.replacement[*inst].len() == 0 {
+            if opcode.is_return() && !cur.func.ret_replaced[*inst] {
                 let replacement = cranelift_spectre::inst::get_pop_jump_ret();
-                cur.func.replacement[*inst] = replacement.to_vec();
+                cur.func.replacement[*inst].append(&mut replacement.to_vec());
+                cur.func.ret_replaced[*inst] = true;
             }
 
             let heap_index_registers = get_pinned_base_heap_index_registers(isa, cur, divert, inst);

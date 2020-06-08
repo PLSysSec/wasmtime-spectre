@@ -7,9 +7,11 @@ use alloc::vec::Vec;
 
 use crate::regalloc::RegDiversions;
 
-const FIRST_BLOCK_LABEL: u64 = 4;
 const REPLACE_LABEL_1: u64 = 5;
 const REPLACE_LABEL_2: u64 = 6;
+const FIRST_BLOCK_LABEL: u64 = 10;
+const RETURN_LABEL: u64 = 10;
+const FIXED_LABEL: u64 = 10;
 
 pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
@@ -73,33 +75,37 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
 
 pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
      let mut cur: EncCursor = EncCursor::new(func, isa);
-     while let Some(block) = cur.next_block() {
-         cur.goto_last_inst(block);
-         let term = cur.current_inst().unwrap();
-         let opcode = cur.func.dfg[term].opcode();
-         match opcode {
-             Opcode::Jump | Opcode::Fallthrough | Opcode::Call => {
-                 match get_previous_opcode(&mut cur) {
-                     Some(Opcode::Brz)
-                     | Some(Opcode::BrzCfi)
-                     | Some(Opcode::Brnz)
-                     | Some(Opcode::BrnzCfi)
-                     | Some(Opcode::BrIcmp)
-                     | Some(Opcode::Brif)
-                     | Some(Opcode::Brff)
-                     => {
-                        // do nothing, as this previous condbr instruction will handle cfi labels
-                        let _a = 1;
+     while let Some(_block) = cur.next_block() {
+        while let Some(inst) = cur.next_inst() {
+            let opcode = cur.func.dfg[inst].opcode();
+            match opcode {
+                Opcode::Jump | Opcode::Fallthrough | Opcode::Call | Opcode::CallIndirect => {
+                    match get_previous_opcode(&mut cur) {
+                        Some(Opcode::Brz)
+                        | Some(Opcode::BrzCfi)
+                        | Some(Opcode::Brnz)
+                        | Some(Opcode::BrnzCfi)
+                        | Some(Opcode::BrIcmp)
+                        | Some(Opcode::Brif)
+                        | Some(Opcode::Brff)
+                        => {
+                            // do nothing, as this previous condbr instruction will handle cfi labels
+                            let _a = 1;
+                        }
+                        _ => {
+                            // we need to handle cfi label ourselves
+                            let new_label = cur.ins().iconst(types::I64, REPLACE_LABEL_1 as i64);
+                            cur.ins().conditionally_set_cfi_label(new_label);
+                        }
                     }
-                     _ => {
-                        // we need to handle cfi label ourselves
-                        let new_label = cur.ins().iconst(types::I64, REPLACE_LABEL_1 as i64);
-                        cur.ins().conditionally_set_cfi_label(new_label);
-                     }
-                 }
-             }
-             _ => {}
-         }
+                },
+                Opcode::Return => {
+                    let new_label = cur.ins().iconst(types::I64, RETURN_LABEL as i64);
+                    cur.ins().conditionally_set_cfi_label(new_label);
+                }
+                _ => {}
+            }
+        }
      }
 }
 
@@ -141,17 +147,24 @@ pub fn do_cfi_number_allocate(func: &mut Function, cfi_start_num: &mut u64) {
     let mut cur = FuncCursor::new(func);
 
     while let Some(block) = cur.next_block() {
-        cur.func.cfi_block_nums[block] = Some(*cfi_start_num);
+        cur.func.cfi_block_nums[block] =  Some(FIXED_LABEL);//Some(*cfi_start_num);
         *cfi_start_num += 1;
 
         while let Some(inst) = cur.next_inst() {
             let opcode = cur.func.dfg[inst].opcode();
 
             if !opcode.is_terminator()
-                && (opcode.is_call() || opcode.is_branch() || opcode.is_indirect_branch())
             {
-                cur.func.cfi_inst_nums[inst] = Some(*cfi_start_num);
-                *cfi_start_num += 1;
+                if opcode.is_branch() || opcode.is_indirect_branch()
+                {
+                    cur.func.cfi_inst_nums[inst] = Some(FIXED_LABEL);//Some(*cfi_start_num);
+                    *cfi_start_num += 1;
+                }
+            }
+
+            if opcode.is_call()
+            {
+                cur.func.cfi_inst_nums[inst] = Some(RETURN_LABEL);
             }
         }
     }
@@ -232,8 +245,7 @@ fn cfi_inst_checks(
     let opcode = cur.func.dfg[*inst].opcode();
     let _format = opcode.format();
 
-    if !opcode.is_terminator()
-        && (opcode.is_call() || opcode.is_branch() || opcode.is_indirect_branch())
+    if opcode.is_call() || (!opcode.is_terminator() && (opcode.is_branch() || opcode.is_indirect_branch()))
     {
         cur.next_inst();
         let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
@@ -246,7 +258,7 @@ fn cfi_inst_checks(
     if opcode == Opcode::BrzCfi || opcode == Opcode::BrnzCfi || opcode == Opcode::Brif || opcode == Opcode::Brff {
         let cfi_label_inst = get_previous_cfi_label_inst(cur).unwrap();
         let br_block = match cur.func.dfg.analyze_branch(*inst) {
-            BranchInfo::SingleDest(dest, varargs) => dest,
+            BranchInfo::SingleDest(dest, _) => dest,
             _ => {
                 panic!("Unexpected branch info");
             }
@@ -358,21 +370,19 @@ fn cfi_inst_checks(
                     ir::condcodes::FloatCC::UnorderedOrLessThanOrEqual => { get_cmovbe(R_R14, label_reg) },
                     ir::condcodes::FloatCC::UnorderedOrGreaterThan => { get_cmova(R_R14, label_reg) },
                     ir::condcodes::FloatCC::UnorderedOrGreaterThanOrEqual => { get_cmovae(R_R14, label_reg) },
-                    _ => {
-                        let _a = 1;
-                        panic!("Not impl");
-                    }
                 };
             cur.func.pre_inst_guards[*inst].append(&mut cmov_bytes);
         }
     }
-    else if opcode == Opcode::Jump || opcode == Opcode::Fallthrough || opcode == Opcode::Call {
+    else if opcode == Opcode::Jump || opcode == Opcode::Fallthrough || opcode == Opcode::Call || opcode == Opcode::CallIndirect {
         let _a = 1;
         let cfi_label_inst = get_previous_conditional_cfi_label_inst(cur);
         if cfi_label_inst.is_none() { return; }
         let cfi_label_inst = cfi_label_inst.unwrap();
 
-        let br_block_label =  if opcode != Opcode::Call {
+        let br_block_label =  if opcode == Opcode::Call || opcode == Opcode::CallIndirect {
+            FIRST_BLOCK_LABEL
+        } else {
             let br_block = match cur.func.dfg.analyze_branch(*inst) {
                 BranchInfo::SingleDest(dest, _) => dest,
                 _ => {
@@ -381,8 +391,6 @@ fn cfi_inst_checks(
             };
 
             cur.func.cfi_block_nums[br_block].unwrap()
-        } else {
-            FIRST_BLOCK_LABEL
         };
         let args = cur.func.dfg.inst_args(cfi_label_inst);
 
