@@ -2313,7 +2313,9 @@ fn define_control_flow(
 
     // Shorthands for instructions.
     let brff = shared.by_name("brff");
+    let brff_cfi = shared.by_name("brff_cfi");
     let brif = shared.by_name("brif");
+    let brif_cfi = shared.by_name("brif_cfi");
     let brnz = shared.by_name("brnz");
     let brnz_cfi = shared.by_name("brnz_cfi");
     let brz = shared.by_name("brz");
@@ -2333,9 +2335,13 @@ fn define_control_flow(
 
     // Shorthands for recipes.
     let rec_brfb = r.template("brfb");
+    let rec_brfb_cfi = r.template("brfb_cfi");
     let rec_brfd = r.template("brfd");
+    let rec_brfd_cfi = r.template("brfd_cfi");
     let rec_brib = r.template("brib");
+    let rec_brib_cfi = r.template("brib_cfi");
     let rec_brid = r.template("brid");
+    let rec_brid_cfi = r.template("brid_cfi");
     let rec_call_id = r.template("call_id");
     let rec_call_plt_id = r.template("call_plt_id");
     let rec_call_r = r.template("call_r");
@@ -2400,11 +2406,15 @@ fn define_control_flow(
     e.enc64(jump, rec_jmpd.opcodes(&JUMP_NEAR_RELATIVE));
 
     e.enc_both(brif, rec_brib.opcodes(&JUMP_SHORT_IF_OVERFLOW));
+    e.enc_both(brif_cfi, rec_brib_cfi.opcodes(&JUMP_SHORT_IF_OVERFLOW));
     e.enc_both(brif, rec_brid.opcodes(&JUMP_NEAR_IF_OVERFLOW));
+    e.enc_both(brif_cfi, rec_brid_cfi.opcodes(&JUMP_NEAR_IF_OVERFLOW));
 
     // Not all float condition codes are legal, see `supported_floatccs`.
     e.enc_both(brff, rec_brfb.opcodes(&JUMP_SHORT_IF_OVERFLOW));
+    e.enc_both(brff_cfi, rec_brfb_cfi.opcodes(&JUMP_SHORT_IF_OVERFLOW));
     e.enc_both(brff, rec_brfd.opcodes(&JUMP_NEAR_IF_OVERFLOW));
+    e.enc_both(brff_cfi, rec_brfd_cfi.opcodes(&JUMP_NEAR_IF_OVERFLOW));
 
     // Note that the tjccd opcode will be prefixed with 0x0f.
     e.enc_i32_i64_explicit_rex(brz, rec_tjccb.opcodes(&JUMP_SHORT_IF_EQUAL));

@@ -8,6 +8,7 @@ pub(crate) struct Formats {
     pub(crate) branch: Rc<InstructionFormat>,
     pub(crate) branch_cfi: Rc<InstructionFormat>,
     pub(crate) branch_float: Rc<InstructionFormat>,
+    pub(crate) branch_float_cfi: Rc<InstructionFormat>,
     pub(crate) branch_icmp: Rc<InstructionFormat>,
     pub(crate) branch_int: Rc<InstructionFormat>,
     pub(crate) branch_table: Rc<InstructionFormat>,
@@ -165,6 +166,14 @@ impl Formats {
 
             branch_float: Builder::new("BranchFloat")
                 .imm(&imm.floatcc)
+                .value()
+                .imm(&entities.block)
+                .varargs()
+                .build(),
+
+            branch_float_cfi: Builder::new("BranchFloatCFI")
+                .imm(&imm.floatcc)
+                .value()
                 .value()
                 .imm(&entities.block)
                 .varargs()

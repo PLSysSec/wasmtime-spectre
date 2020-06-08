@@ -74,7 +74,8 @@ impl<'a> Context<'a> {
             | InstructionData::BranchCFI { destination, .. }
             | InstructionData::BranchIcmp { destination, .. }
             | InstructionData::BranchInt { destination, .. }
-            | InstructionData::BranchFloat { destination, .. } => destination,
+            | InstructionData::BranchFloat { destination, .. }
+            | InstructionData::BranchFloatCFI { destination, .. } => destination,
             _ => panic!("Unexpected instruction in visit_conditional_branch"),
         };
 

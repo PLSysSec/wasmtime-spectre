@@ -299,7 +299,7 @@ pub fn get_cmovz(reg1: u16, reg2: u16) -> Vec<u8> {
     get_cmov(reg1, reg2, 0x44)
 }
 
-/// opbyte specified the flag that controls the condition op
+/// opbyte specifies the byte that controls the condition op
 fn get_cmov(reg1: u16, reg2: u16, opbyte: u8) -> Vec<u8> {
     // cmovz:
     // REX.W + 0F 44 /r

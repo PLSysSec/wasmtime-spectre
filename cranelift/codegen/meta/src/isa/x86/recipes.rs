@@ -2510,12 +2510,81 @@ pub(crate) fn define<'shared>(
     );
 
     recipes.add_template_recipe(
+        EncodingRecipeBuilder::new("brib_cfi", &formats.branch_icmp /* branch_int_cfi */, 1 + CMOV_SIZE)
+            .operands_in(vec![
+                OperandConstraint::FixedReg(reg_rflags),
+                OperandConstraint::RegClass(gpr),
+            ])
+            .branch_range((1, 8))
+            .clobbers_flags(false)
+            .emit(
+                r#"
+                    // cmov r14, new_label
+                    use cranelift_spectre::inst::*;
+                    use crate::ir::condcodes::IntCC;
+                    let cmov_bytes = match cond.unsigned() {
+                        IntCC::Equal => { get_cmove(R_R14, in_reg1) },
+                        IntCC::NotEqual => { get_cmovne(R_R14, in_reg1) },
+                        IntCC::UnsignedLessThan => { get_cmovb(R_R14, in_reg1) },
+                        IntCC::UnsignedGreaterThanOrEqual => { get_cmovae(R_R14, in_reg1) },
+                        IntCC::UnsignedGreaterThan => { get_cmova(R_R14, in_reg1) },
+                        IntCC::UnsignedLessThanOrEqual => { get_cmovbe(R_R14, in_reg1) },
+                        IntCC::Overflow => { get_cmovo(R_R14, in_reg1) },
+                        IntCC::NotOverflow => { get_cmovno(R_R14, in_reg1) },
+                        _ => {
+                            unimplemented!("Condition code {:?}", cond)
+                        }
+                    };
+                    cmov_bytes.iter().for_each(|&b| sink.put1(b));
+
+                    // Actual branch instruction
+                    {{PUT_OP}}(bits | icc2opc(cond), BASE_REX, sink);
+                    disp1(destination, func, sink);
+                "#,
+            ),
+    );
+
+    recipes.add_template_recipe(
         EncodingRecipeBuilder::new("brid", &formats.branch_int, 4)
             .operands_in(vec![reg_rflags])
             .branch_range((4, 32))
             .clobbers_flags(false)
             .emit(
                 r#"
+                    {{PUT_OP}}(bits | icc2opc(cond), BASE_REX, sink);
+                    disp4(destination, func, sink);
+                "#,
+            ),
+    );
+
+    recipes.add_template_recipe(
+        EncodingRecipeBuilder::new("brid_cfi", &formats.branch_icmp /* branch_int_cfi */, 4 + CMOV_SIZE)
+            .operands_in(vec![
+                OperandConstraint::FixedReg(reg_rflags),
+                OperandConstraint::RegClass(gpr),
+            ])
+            .branch_range((4, 32))
+            .clobbers_flags(false)
+            .emit(
+                r#"
+                    // cmov r14, new_label
+                    use cranelift_spectre::inst::*;
+                    use crate::ir::condcodes::IntCC;
+                    let cmov_bytes = match cond.unsigned() {
+                        IntCC::Equal => { get_cmove(R_R14, in_reg1) },
+                        IntCC::NotEqual => { get_cmovne(R_R14, in_reg1) },
+                        IntCC::UnsignedLessThan => { get_cmovb(R_R14, in_reg1) },
+                        IntCC::UnsignedGreaterThanOrEqual => { get_cmovae(R_R14, in_reg1) },
+                        IntCC::UnsignedGreaterThan => { get_cmova(R_R14, in_reg1) },
+                        IntCC::UnsignedLessThanOrEqual => { get_cmovbe(R_R14, in_reg1) },
+                        IntCC::Overflow => { get_cmovo(R_R14, in_reg1) },
+                        IntCC::NotOverflow => { get_cmovno(R_R14, in_reg1) },
+                        _ => {
+                            unimplemented!("Condition code {:?}", cond)
+                        }
+                    };
+                    cmov_bytes.iter().for_each(|&b| sink.put1(b));
+
                     {{PUT_OP}}(bits | icc2opc(cond), BASE_REX, sink);
                     disp4(destination, func, sink);
                 "#,
@@ -2540,6 +2609,47 @@ pub(crate) fn define<'shared>(
     );
 
     recipes.add_template_recipe(
+        EncodingRecipeBuilder::new("brfb_cfi", &formats.branch_float_cfi, 1 + CMOV_SIZE)
+            .operands_in(vec![
+                OperandConstraint::FixedReg(reg_rflags),
+                OperandConstraint::RegClass(gpr),
+            ])
+            .branch_range((1, 8))
+            .clobbers_flags(false)
+            .inst_predicate(supported_floatccs_predicate(
+                &supported_floatccs,
+                &*formats.branch_float,
+            ))
+            .emit(
+                r#"
+                    // cmov r14, new_label
+                    use cranelift_spectre::inst::*;
+                    use crate::ir::condcodes::FloatCC;
+                    let cmov_bytes = match cond {
+                        FloatCC::Ordered => { get_cmovnp(R_R14, in_reg1) },
+                        FloatCC::Unordered => { get_cmovp(R_R14, in_reg1) },
+                        FloatCC::Equal => { get_cmove(R_R14, in_reg1) },
+                        FloatCC::NotEqual => { get_cmovne(R_R14, in_reg1) },
+                        FloatCC::OrderedNotEqual => { get_cmovne(R_R14, in_reg1) },
+                        FloatCC::UnorderedOrEqual => { get_cmove(R_R14, in_reg1) },
+                        FloatCC::LessThan => { get_cmovb(R_R14, in_reg1) },
+                        FloatCC::LessThanOrEqual => { get_cmovbe(R_R14, in_reg1) },
+                        FloatCC::GreaterThan => { get_cmova(R_R14, in_reg1) },
+                        FloatCC::GreaterThanOrEqual => { get_cmovae(R_R14, in_reg1) },
+                        FloatCC::UnorderedOrLessThan => { get_cmovb(R_R14, in_reg1) },
+                        FloatCC::UnorderedOrLessThanOrEqual => { get_cmovbe(R_R14, in_reg1) },
+                        FloatCC::UnorderedOrGreaterThan => { get_cmova(R_R14, in_reg1) },
+                        FloatCC::UnorderedOrGreaterThanOrEqual => { get_cmovae(R_R14, in_reg1) },
+                    };
+                    cmov_bytes.iter().for_each(|&b| sink.put1(b));
+
+                    {{PUT_OP}}(bits | fcc2opc(cond), BASE_REX, sink);
+                    disp1(destination, func, sink);
+                "#,
+            ),
+    );
+
+    recipes.add_template_recipe(
         EncodingRecipeBuilder::new("brfd", &formats.branch_float, 4)
             .operands_in(vec![reg_rflags])
             .branch_range((4, 32))
@@ -2550,6 +2660,47 @@ pub(crate) fn define<'shared>(
             ))
             .emit(
                 r#"
+                    {{PUT_OP}}(bits | fcc2opc(cond), BASE_REX, sink);
+                    disp4(destination, func, sink);
+                "#,
+            ),
+    );
+
+    recipes.add_template_recipe(
+        EncodingRecipeBuilder::new("brfd_cfi", &formats.branch_float_cfi, 4 + CMOV_SIZE)
+            .operands_in(vec![
+                OperandConstraint::FixedReg(reg_rflags),
+                OperandConstraint::RegClass(gpr),
+            ])
+            .branch_range((4, 32))
+            .clobbers_flags(false)
+            .inst_predicate(supported_floatccs_predicate(
+                &supported_floatccs,
+                &*formats.branch_float,
+            ))
+            .emit(
+                r#"
+                    // cmov r14, new_label
+                    use cranelift_spectre::inst::*;
+                    use crate::ir::condcodes::FloatCC;
+                    let cmov_bytes = match cond {
+                        FloatCC::Ordered => { get_cmovnp(R_R14, in_reg1) },
+                        FloatCC::Unordered => { get_cmovp(R_R14, in_reg1) },
+                        FloatCC::Equal => { get_cmove(R_R14, in_reg1) },
+                        FloatCC::NotEqual => { get_cmovne(R_R14, in_reg1) },
+                        FloatCC::OrderedNotEqual => { get_cmovne(R_R14, in_reg1) },
+                        FloatCC::UnorderedOrEqual => { get_cmove(R_R14, in_reg1) },
+                        FloatCC::LessThan => { get_cmovb(R_R14, in_reg1) },
+                        FloatCC::LessThanOrEqual => { get_cmovbe(R_R14, in_reg1) },
+                        FloatCC::GreaterThan => { get_cmova(R_R14, in_reg1) },
+                        FloatCC::GreaterThanOrEqual => { get_cmovae(R_R14, in_reg1) },
+                        FloatCC::UnorderedOrLessThan => { get_cmovb(R_R14, in_reg1) },
+                        FloatCC::UnorderedOrLessThanOrEqual => { get_cmovbe(R_R14, in_reg1) },
+                        FloatCC::UnorderedOrGreaterThan => { get_cmova(R_R14, in_reg1) },
+                        FloatCC::UnorderedOrGreaterThanOrEqual => { get_cmovae(R_R14, in_reg1) },
+                    };
+                    cmov_bytes.iter().for_each(|&b| sink.put1(b));
+
                     {{PUT_OP}}(bits | fcc2opc(cond), BASE_REX, sink);
                     disp4(destination, func, sink);
                 "#,

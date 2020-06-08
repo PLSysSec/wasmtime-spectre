@@ -67,17 +67,18 @@ fn define_control_flow(
             .build(),
     );
 
+    const CFI_LABEL_SIZE_BITS: u16 = 64;
+    let block_label = &TypeVar::new(
+        "block_label",
+        "A CFI block label",
+        TypeSetBuilder::new()
+            .ints(CFI_LABEL_SIZE_BITS..CFI_LABEL_SIZE_BITS)
+            .build(),
+    );
+    let cfi_label = &Operand::new("cfi_label", block_label);
+
     {
         let c = &Operand::new("c", Testable).with_doc("Controlling value to test");
-        const CFI_LABEL_SIZE_BITS: u16 = 64;
-        let block_label = &TypeVar::new(
-            "block_label",
-            "A CFI block label",
-            TypeSetBuilder::new()
-                .ints(CFI_LABEL_SIZE_BITS..CFI_LABEL_SIZE_BITS)
-                .build(),
-        );
-        let cfi_label = &Operand::new("cfi_label", block_label);
 
         ig.push(
             Inst::new(
@@ -111,21 +112,6 @@ fn define_control_flow(
 
         ig.push(
             Inst::new(
-                "brnz_cfi",
-                r#"
-        Branch when non-zero, for CFI.
-
-        If ``c`` is a `b1` value, take the branch when ``c`` is true. If
-        ``c`` is an integer value, take the branch when ``c != 0``.
-        "#,
-                &formats.branch_cfi,
-            )
-            .operands_in(vec![c, cfi_label, block, args])
-            .is_branch(true),
-        );
-
-        ig.push(
-            Inst::new(
                 "brnz",
                 r#"
         Branch when non-zero.
@@ -136,6 +122,21 @@ fn define_control_flow(
                 &formats.branch,
             )
             .operands_in(vec![c, block, args])
+            .is_branch(true),
+        );
+
+        ig.push(
+            Inst::new(
+                "brnz_cfi",
+                r#"
+        Branch when non-zero, for CFI.
+
+        If ``c`` is a `b1` value, take the branch when ``c`` is true. If
+        ``c`` is an integer value, take the branch when ``c != 0``.
+        "#,
+                &formats.branch_cfi,
+            )
+            .operands_in(vec![c, cfi_label, block, args])
             .is_branch(true),
         );
     }
@@ -196,6 +197,18 @@ fn define_control_flow(
             .operands_in(vec![Cond, f, block, args])
             .is_branch(true),
         );
+
+        ig.push(
+            Inst::new(
+                "brif_cfi",
+                r#"
+        Branch when condition is true in integer CPU flags, for CFI.
+        "#,
+                &formats.branch_icmp, // branch_int_cfi
+            )
+            .operands_in(vec![Cond, f, cfi_label, block, args])
+            .is_branch(true),
+        );
     }
 
     {
@@ -212,6 +225,18 @@ fn define_control_flow(
                 &formats.branch_float,
             )
             .operands_in(vec![Cond, f, block, args])
+            .is_branch(true),
+        );
+
+        ig.push(
+            Inst::new(
+                "brff_cfi",
+                r#"
+        Branch when condition is true in floating point CPU flags, for CFI.
+        "#,
+                &formats.branch_float_cfi,
+            )
+            .operands_in(vec![Cond, f, cfi_label, block, args])
             .is_branch(true),
         );
     }

@@ -546,12 +546,8 @@ pub fn write_operands(
             destination,
             ref args,
             ..
-        } => {
-            let args = args.as_slice(pool);
-            write!(w, " {}, {}", args[0], destination)?;
-            write_block_args(w, &args[1..])
         }
-        BranchCFI {
+        | BranchCFI {
             destination,
             ref args,
             ..
@@ -571,6 +567,12 @@ pub fn write_operands(
             write_block_args(w, &args[1..])
         }
         BranchFloat {
+            cond,
+            destination,
+            ref args,
+            ..
+        }
+        | BranchFloatCFI {
             cond,
             destination,
             ref args,

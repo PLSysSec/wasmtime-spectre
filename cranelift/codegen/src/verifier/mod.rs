@@ -657,6 +657,11 @@ impl<'a> Verifier<'a> {
                 ref args,
                 ..
             }
+            | BranchFloatCFI {
+                destination,
+                ref args,
+                ..
+            }
             | BranchIcmp {
                 destination,
                 ref args,
