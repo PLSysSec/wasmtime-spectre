@@ -240,53 +240,13 @@ fn cfi_inst_checks(
     }
 
     if opcode == Opcode::BrzCfi || opcode == Opcode::BrnzCfi || opcode == Opcode::Brif || opcode == Opcode::Brff {
-        let cfi_label_inst = get_previous_cfi_label_inst(cur).unwrap();
-        let br_block = match cur.func.dfg.analyze_branch(*inst) {
-            BranchInfo::SingleDest(dest, _) => dest,
-            _ => {
-                panic!("Unexpected branch info");
-            }
-        };
-        let br_block_label = cur.func.cfi_block_nums[br_block].unwrap();
-        let fallthrough_block_label = {
-            let next_inst = get_next_inst(cur);
-            match next_inst.map(|next_inst| cur.func.dfg[next_inst].opcode()) {
-                Some(Opcode::Jump) | Some(Opcode::Fallthrough) => {
-                    // label of jump or fallthrough target
-                    match cur.func.dfg.analyze_branch(next_inst.expect("Already checked that it's a Some here")) {
-                        BranchInfo::SingleDest(dest, ..) => {
-                            cur.func.cfi_block_nums[dest].unwrap()
-                        }
-                        _ => panic!("Expected Jump/Fallthrough to be SingleDest"),
-                    }
-                }
-                _ => {
-                    // actual label of the fallthrough block
-                    cur.func.cfi_inst_nums[*inst].unwrap()
-                }
-            }
-        };
+        // First update the pre-branch CFI assignments to use the correct labels
+        // (see notes on the `set_labels_for_branch` function)
+        let label_val = set_labels_for_branch(cur, *inst);
+        let label_reg = get_registers(&cur.func, divert, &[label_val])[0];
 
-        let args = cur.func.dfg.inst_args(cfi_label_inst);
-        assert!(args.len() == 2, "Expected two CFI labels");
-        let rets = cur.func.dfg.inst_results(cfi_label_inst);
-        let out_regs = get_registers(&cur.func, divert, &rets);
-
-        let original_label0_source = cur.func.dfg.value_def(args[0]);
-        let original_label1_source = cur.func.dfg.value_def(args[1]);
-
-        let original_label0_inst = match original_label0_source {
-            ValueDef::Result(inst, _) => inst,
-            _ => panic!("Unexpected label source for CFI"),
-        };
-        let original_label1_inst = match original_label1_source {
-            ValueDef::Result(inst, _) => inst,
-            _ => panic!("Unexpected label source for CFI"),
-        };
-
-        cur.func.dfg.replace(original_label0_inst).iconst(types::I64, br_block_label as i64);
-        cur.func.dfg.replace(original_label1_inst).iconst(types::I64, fallthrough_block_label as i64);
-
+        // Now put in the pre-branch CFI assignments for Brif and Brff.
+        // For BrzCfi and BrnzCfi these are built into the encoding of those opcodes.
         if opcode == Opcode::Brif {
             use ir::InstructionData::*;
             let cond_code: ir::condcodes::IntCC = match &cur.func.dfg[*inst] {
@@ -298,11 +258,10 @@ fn cfi_inst_checks(
                 } => {
                     cond.clone()
                 },
-                _ => panic!("unexpected instruction in cfi brif"),
+                instinfo => panic!("unexpected instruction in cfi brif: {:?}", instinfo),
             };
 
             use cranelift_spectre::inst::*;
-            let label_reg = out_regs[0];
             let mut cmov_bytes =
                 match cond_code.unsigned() {
                     ir::condcodes::IntCC::Equal => { get_cmove(R_R14, label_reg) },
@@ -333,11 +292,7 @@ fn cfi_inst_checks(
                 _ => panic!("unexpected instruction in cfi brif"),
             };
 
-            let _prev = get_prev_inst(cur);
-            let _prev_opcode =  cur.func.dfg[_prev.unwrap_or(*inst)].opcode();
-
             use cranelift_spectre::inst::*;
-            let label_reg = out_regs[0];
             let mut cmov_bytes =
                 match cond_code {
                     ir::condcodes::FloatCC::Ordered => { get_cmovnp(R_R14, label_reg) },
@@ -391,9 +346,69 @@ fn cfi_inst_checks(
     }
 }
 
+/// Put in the correct real CFI numbers prior to conditional branch, replacing
+/// the placeholder numbers added in a previous pass.
+///
+/// `inst` should be a conditional branch instruction.
+///
+/// Returns the result of the `CondbrGetNewCfiLabel` instruction.
+///
+/// This function preserves the cursor position.
+fn set_labels_for_branch(cur: &mut EncCursor, inst: Inst) -> Value {
+    let cfi_label_inst = get_previous_cfi_label_inst(cur).unwrap();
+    let br_block = match cur.func.dfg.analyze_branch(inst) {
+        BranchInfo::SingleDest(dest, _) => dest,
+        _ => {
+            panic!("set_labels_for_branch: expected inst to be a SingleDest branch but it wasn't: {:?}", cur.func.dfg[inst].opcode());
+        }
+    };
+    let br_block_label = cur.func.cfi_block_nums[br_block].unwrap();
+    let fallthrough_block_label = {
+        let next_inst = get_next_inst(cur);
+        match next_inst.map(|next_inst| cur.func.dfg[next_inst].opcode()) {
+            Some(Opcode::Jump) | Some(Opcode::Fallthrough) => {
+                // label of jump or fallthrough target
+                match cur.func.dfg.analyze_branch(next_inst.expect("Already checked that it's a Some here")) {
+                    BranchInfo::SingleDest(dest, ..) => {
+                        cur.func.cfi_block_nums[dest].unwrap()
+                    }
+                    _ => panic!("Expected Jump/Fallthrough to be SingleDest"),
+                }
+            }
+            _ => {
+                // actual label of the fallthrough block
+                cur.func.cfi_inst_nums[inst].unwrap()
+            }
+        }
+    };
 
+    let args = cur.func.dfg.inst_args(cfi_label_inst);
+    assert!(args.len() == 2, "Expected two CFI labels");
+
+    let original_label0_source = cur.func.dfg.value_def(args[0]);
+    let original_label1_source = cur.func.dfg.value_def(args[1]);
+
+    let original_label0_inst = match original_label0_source {
+        ValueDef::Result(inst, _) => inst,
+        _ => panic!("Unexpected label source for CFI"),
+    };
+    let original_label1_inst = match original_label1_source {
+        ValueDef::Result(inst, _) => inst,
+        _ => panic!("Unexpected label source for CFI"),
+    };
+
+    cur.func.dfg.replace(original_label0_inst).iconst(types::I64, br_block_label as i64);
+    cur.func.dfg.replace(original_label1_inst).iconst(types::I64, fallthrough_block_label as i64);
+
+    let rets = cur.func.dfg.inst_results(cfi_label_inst);
+    assert_eq!(rets.len(), 1, "expected CondbrGetNewCfiLabel instruction to have one result");
+    rets[0]
+}
+
+/// Get the first previous inst with opcode == Opcode::CondbrGetNewCfiLabel
+///
+/// This function preserves the cursor position.
 fn get_previous_cfi_label_inst(cur: &mut EncCursor) -> Option<Inst> {
-    // get prev inst which is opcode == Opcode::CondbrGetNewCfiLabel
     // this should be in the same block, so only iterate in this block
     let saved_cursor_position = cur.position();
 
