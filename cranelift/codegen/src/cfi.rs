@@ -22,9 +22,8 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                 Opcode::Brz | Opcode::Brnz | Opcode::Brif | Opcode::Brff => {
                     let saved_position = cur.position();
                     let flags = if opcode == Opcode::Brif || opcode == Opcode::Brff {
-                        // if its a brif/brff, prev inst is a cmp and returns flags
-                        let cmp_inst = get_prev_inst(&mut cur).expect("Should be an instruction before the brif / brff");
-                        assert!(is_a_cmp_instruction_returning_flags(cur.func.dfg[cmp_inst].opcode()));
+                        // if its a brif/brff, find the prev compare instruction which returns flags
+                        let cmp_inst = get_prev_inst_which_returns_flags(&mut cur).expect("Should be a flags-producing instruction before the brif / brff");
                         // So (1) we need those flags to pass to the new brif_cfi / brff_cfi
                         let flags = cur.func.dfg.first_result(cmp_inst);
                         // and (2) we need to insert the rest of our CFI stuff before the cmp,
@@ -108,17 +107,6 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
             }
         }
      }
-}
-
-/// Is this a cmp instruction that returns the flags
-fn is_a_cmp_instruction_returning_flags(opcode: Opcode) -> bool {
-    match opcode {
-        Opcode::IfcmpImm
-        | Opcode::Ifcmp
-        | Opcode::IfcmpSp => true,
-        // note that Opcode::Icmp and Opcode::IcmpImm do not return flags - they return bool results
-        _ => false,
-    }
 }
 
 /// Sets the cursor to immediately before the most recent instruction that
@@ -434,6 +422,39 @@ fn get_next_opcode(cur: &mut EncCursor) -> Option<Opcode> {
 
 fn get_prev_opcode(cur: &mut EncCursor) -> Option<Opcode> {
     get_prev_inst(cur).map(|inst| cur.func.dfg[inst].opcode())
+}
+
+/// Finds the most recent compare instruction which returns flags.
+///
+/// This function preserves the cursor position.
+fn get_prev_inst_which_returns_flags(cur: &mut EncCursor) -> Option<Inst> {
+    let saved_cursor_position = cur.position();
+
+    let found = loop {
+        match cur.current_inst() {
+            None => break None,
+            Some(cur_inst) => {
+                if is_a_cmp_instruction_returning_flags(cur.func.dfg[cur_inst].opcode()) {
+                    break Some(cur_inst);
+                }
+            }
+        }
+        cur.prev_inst();
+    };
+
+    cur.set_position(saved_cursor_position);
+    return found;
+}
+
+/// Is this a cmp instruction that returns the flags
+fn is_a_cmp_instruction_returning_flags(opcode: Opcode) -> bool {
+    match opcode {
+        Opcode::IfcmpImm
+        | Opcode::Ifcmp
+        | Opcode::IfcmpSp => true,
+        // note that Opcode::Icmp and Opcode::IcmpImm do not return flags - they return bool results
+        _ => false,
+    }
 }
 
 fn get_registers<'a>(func: &'a Function, divert: &'a RegDiversions, values: impl IntoIterator<Item = Value> + 'a) -> impl Iterator<Item = RegUnit> + 'a {
