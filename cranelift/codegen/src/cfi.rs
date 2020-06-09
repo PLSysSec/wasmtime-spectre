@@ -193,13 +193,13 @@ pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indire
             let _format = _opcode.format();
             let _enc =  encinfo.display(cur.func.encodings[inst]);
             if first_inst_in_func {
-                cfi_func_checks(isa, &mut cur, &divert, can_be_indirectly_called);
+                cfi_func_checks(&mut cur, can_be_indirectly_called);
             }
             if first_inst_in_block {
-                cfi_block_checks(isa, &mut cur, &divert, first_inst_in_func);
+                cfi_block_checks(&mut cur, first_inst_in_func);
             }
 
-            cfi_inst_checks(isa, &mut cur, &divert, &inst);
+            cfi_inst_checks(&mut cur, &inst);
 
             first_inst_in_block = false;
             first_inst_in_func = false;
@@ -211,45 +211,34 @@ pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indire
     }
 }
 
-fn cfi_func_checks(
-    isa: &dyn TargetIsa,
-    cur: &mut EncCursor,
-    divert: &RegDiversions,
-    can_be_indirectly_called: bool,
-) {
+fn cfi_func_checks(cur: &mut EncCursor, can_be_indirectly_called: bool) {
     if can_be_indirectly_called {
         let block = cur.current_block().unwrap();
-        let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
+        // we now always zero the stack and heap in event of misprediction, to simplify chaining / avoid the control flow laundering problem
+        //let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
         let label = cur.func.cfi_block_nums[block].unwrap();
-        let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, zero_heap, zero_stack);
+        let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, true, true);
         cur.func.block_guards[block].append(&mut bytes);
     }
 }
 
-fn cfi_block_checks(isa: &dyn TargetIsa, cur: &mut EncCursor, divert: &RegDiversions, is_first_block: bool) {
+fn cfi_block_checks(cur: &mut EncCursor, is_first_block: bool) {
     let saved_cursor_position = cur.position();
 
     let block = cur.current_block().unwrap();
     // Add the cfi check for each block
     if cur.func.block_guards[block].len() == 0 {
-        let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
-        // if cur.func.cfi_block_nums[block].is_none() {
-        //     let _a = 1;
-        // }
+        // we now always zero the stack and heap in event of misprediction, to simplify chaining / avoid the control flow laundering problem
+        //let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
         let label = if is_first_block { FIRST_BLOCK_LABEL } else { cur.func.cfi_block_nums[block].unwrap() };
-        let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, zero_heap, zero_stack);
+        let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, true, true);
         cur.func.block_guards[block].append(&mut bytes);
     }
 
     cur.set_position(saved_cursor_position);
 }
 
-fn cfi_inst_checks(
-    isa: &dyn TargetIsa,
-    cur: &mut EncCursor,
-    divert: &RegDiversions,
-    inst: &Inst,
-) {
+fn cfi_inst_checks(cur: &mut EncCursor, inst: &Inst) {
     let opcode = cur.func.dfg[*inst].opcode();
     let _format = opcode.format();
 
@@ -257,11 +246,14 @@ fn cfi_inst_checks(
     if !opcode.is_terminator()
         && (opcode.is_call() || is_condbr_followed_by_non_jump_or_fallthrough(cur, opcode))
     {
+        // we now always zero the stack and heap in event of misprediction, to simplify chaining / avoid the control flow laundering problem
+        /*
         cur.next_inst();
         let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
         cur.prev_inst();
+        */
         let label = cur.func.cfi_inst_nums[*inst].unwrap();
-        let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, zero_heap, zero_stack);
+        let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, true, true);
         cur.func.post_inst_guards[*inst].append(&mut bytes);
     }
 
