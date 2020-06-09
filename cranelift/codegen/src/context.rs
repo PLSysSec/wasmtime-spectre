@@ -313,6 +313,23 @@ impl Context {
         Ok(())
     }
 
+    /// Run the verifier, given a function cursor and other parts of Context without
+    /// needing mutable access to the Context
+    pub fn full_verify(
+        cur: &mut crate::cursor::EncCursor,
+        cfg: &mut ControlFlowGraph,
+        domtree: &mut DominatorTree,
+        isa: &dyn TargetIsa,
+    ) {
+        cfg.compute(&cur.func);
+        domtree.compute(&cur.func, &cfg);
+        let mut errors = VerifierErrors::default();
+        let _ = verify_context(&cur.func, &cfg, &domtree, isa, &mut errors);
+        if !errors.is_empty() {
+            panic!("Verifier failed!!! errors is {:?}", errors);
+        }
+    }
+
     /// Run the locations verifier on the function.
     pub fn verify_locations(&self, isa: &dyn TargetIsa) -> VerifierResult<()> {
         let mut errors = VerifierErrors::default();

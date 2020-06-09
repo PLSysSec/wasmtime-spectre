@@ -2618,7 +2618,7 @@ pub(crate) fn define<'shared>(
             .clobbers_flags(false)
             .inst_predicate(supported_floatccs_predicate(
                 &supported_floatccs,
-                &*formats.branch_float,
+                &*formats.branch_float_cfi,
             ))
             .emit(
                 r#"
@@ -2676,7 +2676,7 @@ pub(crate) fn define<'shared>(
             .clobbers_flags(false)
             .inst_predicate(supported_floatccs_predicate(
                 &supported_floatccs,
-                &*formats.branch_float,
+                &*formats.branch_float_cfi,
             ))
             .emit(
                 r#"

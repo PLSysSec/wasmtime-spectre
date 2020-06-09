@@ -21,18 +21,11 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
             match opcode {
                 Opcode::Brz | Opcode::Brnz | Opcode::Brif | Opcode::Brff => {
                     let saved_position = cur.position();
-                    let flags = if opcode == Opcode::Brif || opcode == Opcode::Brff {
-                        // if its a brif/brff, find the prev compare instruction which returns flags
-                        let cmp_inst = get_prev_inst_which_returns_flags(&mut cur).expect("Should be a flags-producing instruction before the brif / brff");
-                        // So (1) we need those flags to pass to the new brif_cfi / brff_cfi
-                        let flags = cur.func.dfg.first_result(cmp_inst);
-                        // and (2) we need to insert the rest of our CFI stuff before the cmp,
+                    if opcode == Opcode::Brif || opcode == Opcode::Brff {
+                        // we need to insert the rest of our CFI stuff before the cmp,
                         // not before the branch itself, in order to not disrupt the flags
                         set_prev_valid_insert_point(&mut cur);
-                        Some(flags)
-                    } else {
-                        None
-                    };
+                    }
                     let block1_label = cur.ins().iconst(types::I64, REPLACE_LABEL_1 as i64);
                     let block2_label = cur.ins().iconst(types::I64, REPLACE_LABEL_2 as i64);
                     let new_label = cur
@@ -63,14 +56,16 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                                 InstructionData::BranchInt { cond, .. } => *cond,
                                 idata => panic!("Expected BranchInt, got {:?}", idata),
                             };
-                            cur.ins().brif_cfi(condition, flags.unwrap(), new_label, dest, &varargs[..]);
+                            let flags = cur.func.dfg.inst_args(inst)[0];
+                            cur.ins().brif_cfi(condition, flags, new_label, dest, &varargs[..]);
                         }
                         Opcode::Brff => {
                             let condition = match &cur.func.dfg[inst] {
                                 InstructionData::BranchFloat { cond, .. } => *cond,
                                 idata => panic!("Expected BranchFloat, got {:?}", idata),
                             };
-                            cur.ins().brff_cfi(condition, flags.unwrap(), new_label, dest, &varargs[..]);
+                            let flags = cur.func.dfg.inst_args(inst)[0];
+                            cur.ins().brff_cfi(condition, flags, new_label, dest, &varargs[..]);
                         }
                         _ => { panic!("Shouldn't ever get here"); },
                     }

@@ -183,6 +183,11 @@ impl InstructionData {
                 ref args,
                 ..
             }
+            | Self::BranchFloatCFI {
+                destination,
+                ref args,
+                ..
+            }
             | Self::Branch {
                 destination,
                 ref args,
@@ -220,6 +225,7 @@ impl InstructionData {
             | Self::BranchCFI { destination, .. }
             | Self::BranchInt { destination, .. }
             | Self::BranchFloat { destination, .. }
+            | Self::BranchFloatCFI { destination, .. }
             | Self::BranchIcmp { destination, .. } => Some(destination),
             Self::BranchTable { .. } | Self::IndirectJump { .. } => None,
             _ => {
@@ -252,6 +258,10 @@ impl InstructionData {
                 ..
             }
             | Self::BranchFloat {
+                ref mut destination,
+                ..
+            }
+            | Self::BranchFloatCFI {
                 ref mut destination,
                 ..
             }
