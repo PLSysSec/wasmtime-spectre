@@ -579,10 +579,11 @@ where
         TS: binemit::TrapSink,
     {
         let _func_name = &self.contents.functions[func].decl.name;
-        if _func_name.starts_with("guest_func___main_void") {
+        if _func_name.starts_with("guest_func_main") {
             let _s = _func_name;
             // println!("Found: {}", s);
         }
+        cranelift_spectre::inst::set_curr_func(_func_name.clone());
         info!(
             "defining function {}: {}",
             func,

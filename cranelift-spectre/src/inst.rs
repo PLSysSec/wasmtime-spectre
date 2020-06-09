@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 pub fn get_lfence() -> &'static [u8] {
     &[0x0f, 0xae, 0xe8]
 }
@@ -324,6 +326,23 @@ fn get_cmov(reg1: u16, reg2: u16, opbyte: u8) -> Vec<u8> {
     return vec![byte1, byte2, byte3, byte4];
 }
 
+thread_local! {
+    pub static CURR_COMPILER_FUNC: RefCell<String> = RefCell::new(String::new());
+}
+
+pub fn set_curr_func(s: String) {
+    CURR_COMPILER_FUNC.with(|curr| {
+        *curr.borrow_mut() = s;
+    });
+}
+
+pub fn get_curr_func() -> String {
+    CURR_COMPILER_FUNC.with(|curr| {
+        let ret = &*curr.borrow();
+        return ret.clone();
+    })
+}
+
 /// `label`: CFI label to compare against
 /// `zero_r15`: whether to zero `r15` if the CFI label is wrong
 /// `zero_rsp`: whether to zero `rsp` if the CFI label is wrong
@@ -331,7 +350,41 @@ pub fn get_cfi_check_bytes(label: u64, zero_r15: bool, zero_rsp: bool) -> Vec<u8
     // we are using 32-bit labels for now
     let label = label as u32;
 
-    let mut bytes = get_sub_const_bytes(R_R14, label);
+    let mut bytes: Vec<u8> = Vec::new();
+    let debug_mode = true;
+
+    if debug_mode {
+        let ignore_trap = CURR_COMPILER_FUNC.with(|curr| {
+            curr.borrow().starts_with("dlmalloc")
+        });
+
+        if ignore_trap {
+            // Debug no stop
+            //  16d:   49 83 fe 0a             cmp    $0xa,%r14
+            //  171:   74 06                   je     179 <square.L1>
+            //  173:   41 be 0a 00 00 00       mov    $0xa,%r14d
+            bytes.extend_from_slice(&[
+                0x49, 0x83, 0xfe, 0x0a,
+                0x74, 0x06,
+                0x41, 0xbe, 0x0a, 0x00, 0x00, 0x00,
+            ]);
+        } else {
+            // Debug
+            // 16d:   49 83 fe 0a             cmp    $0xa,%r14
+            // 171:   74 07                   je     17a <square.L1>
+            // 179:   cc                      int3  
+            // 173:   41 be 0a 00 00 00       mov    $0xa,%r14d
+
+            bytes.extend_from_slice(&[
+                0x49, 0x83, 0xfe, 0x0a,
+                0x74, 0x07,
+                0xcc,
+                0x41, 0xbe, 0x0a, 0x00, 0x00, 0x00,
+            ]);
+        }
+    }
+
+    bytes.extend_from_slice(&get_sub_const_bytes(R_R14, label));
     bytes.extend_from_slice(get_test_bytes(R_R14));
     if zero_r15 {
         bytes.extend_from_slice(&get_cmovnz(R_R15, R_R14));

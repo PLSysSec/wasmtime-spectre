@@ -15,6 +15,11 @@ const FIXED_LABEL: u64 = 10;
 
 pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
+
+    if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
+        println!("Function:\n {}", cur.func.display(isa));
+    }
+
     while let Some(_block) = cur.next_block() {
         while let Some(inst) = cur.next_inst() {
             let opcode = cur.func.dfg[inst].opcode();
@@ -68,7 +73,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                             cur.ins().brff_cfi(condition, flags, new_label, dest, &varargs[..]);
                         }
                         _ => { panic!("Shouldn't ever get here"); },
-                    }
+                    };
                 }
                 Opcode::BrIcmp => {
                     unimplemented!("BrIcmp in do_condbr_cfi pass")
@@ -77,11 +82,20 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
             }
         }
     }
+
+    if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
+        println!("Function:\n {}", cur.func.display(isa));
+    }
 }
 
 pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
-     let mut cur: EncCursor = EncCursor::new(func, isa);
-     while let Some(_block) = cur.next_block() {
+    let mut cur: EncCursor = EncCursor::new(func, isa);
+
+    if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
+        println!("Function:\n {}", cur.func.display(isa));
+    }
+
+    while let Some(_block) = cur.next_block() {
         while let Some(inst) = cur.next_inst() {
             let opcode = cur.func.dfg[inst].opcode();
             match opcode {
@@ -102,14 +116,17 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                 _ => {}
             }
         }
-     }
+    }
+
+    if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
+        println!("Function:\n {}", cur.func.display(isa));
+    }
 }
 
 /// Sets the cursor to immediately before the most recent instruction that
 /// writes the CPU flags.  (This gives an insertion point where we don't
 /// have to worry about clobbering the flags.)
 fn set_prev_valid_insert_point(cur: &mut EncCursor) {
-    let mut seen_write_flags = false;
     loop {
         match cur.current_inst() {
             None => {
@@ -118,12 +135,9 @@ fn set_prev_valid_insert_point(cur: &mut EncCursor) {
                 return;
             }
             Some(inst) => {
-                if seen_write_flags {
-                    return;
-                }
                 let opcode = cur.func.dfg[inst].opcode();
                 if opcode.writes_cpu_flags() {
-                    seen_write_flags = true;
+                    return;
                 }
                 cur.prev_inst();
             }
@@ -158,6 +172,11 @@ pub fn do_cfi_number_allocate(func: &mut Function, isa: &dyn TargetIsa, cfi_star
 
 pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indirectly_called: bool) {
     let mut cur = EncCursor::new(func, isa);
+
+    if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
+        println!("Function:\n {}", cur.func.display(isa));
+    }
+
     let mut divert = RegDiversions::new();
 
     let mut first_inst_in_func = true;
@@ -185,6 +204,10 @@ pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indire
             first_inst_in_block = false;
             first_inst_in_func = false;
         }
+    }
+
+    if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
+        println!("Function:\n {}", cur.func.display(isa));
     }
 }
 
@@ -375,6 +398,7 @@ fn get_previous_conditional_cfi_label_inst(cur: &mut EncCursor) -> Option<Inst> 
     let saved_cursor_position = cur.position();
 
     let found = loop {
+        cur.prev_inst();
         match cur.current_inst() {
             None => break None,
             Some(cur_inst) => {
@@ -389,7 +413,6 @@ fn get_previous_conditional_cfi_label_inst(cur: &mut EncCursor) -> Option<Inst> 
                 }
             }
         }
-        cur.prev_inst();
     };
 
     cur.set_position(saved_cursor_position);
@@ -417,7 +440,8 @@ fn get_next_opcode(cur: &mut EncCursor) -> Option<Opcode> {
 }
 
 fn get_prev_opcode(cur: &mut EncCursor) -> Option<Opcode> {
-    get_prev_inst(cur).map(|inst| cur.func.dfg[inst].opcode())
+    let ret = get_prev_inst(cur).map(|inst| cur.func.dfg[inst].opcode());
+    ret
 }
 
 /// Finds the most recent compare instruction which returns flags.
