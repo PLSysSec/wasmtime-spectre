@@ -1,5 +1,7 @@
 use std::cell::RefCell;
 
+pub const DEBUG_MODE: bool = false;
+
 pub fn get_lfence() -> &'static [u8] {
     &[0x0f, 0xae, 0xe8]
 }
@@ -351,9 +353,8 @@ pub fn get_cfi_check_bytes(label: u64, zero_r15: bool, zero_rsp: bool) -> Vec<u8
     let label = label as u32;
 
     let mut bytes: Vec<u8> = Vec::new();
-    let debug_mode = true;
 
-    if debug_mode {
+    if DEBUG_MODE {
         let ignore_trap = CURR_COMPILER_FUNC.with(|curr| {
             curr.borrow().starts_with("dlmalloc")
         });

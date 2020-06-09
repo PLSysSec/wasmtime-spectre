@@ -16,7 +16,7 @@ const FIXED_LABEL: u64 = 10;
 pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
 
-    if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
+    if cranelift_spectre::inst::DEBUG_MODE && cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
         println!("Function at top of do_condbr_cfi:\n{}", cur.func.display(isa));
     }
 
@@ -83,7 +83,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
         }
     }
 
-    if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
+    if cranelift_spectre::inst::DEBUG_MODE && cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
         println!("Function at bottom of do_condbr_cfi:\n{}", cur.func.display(isa));
     }
 }
@@ -91,7 +91,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
 pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
 
-    if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
+    if cranelift_spectre::inst::DEBUG_MODE && cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
         println!("Function at top of do_br_cfi:\n{}", cur.func.display(isa));
     }
 
@@ -118,7 +118,7 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
         }
     }
 
-    if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
+    if cranelift_spectre::inst::DEBUG_MODE && cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
         println!("Function at bottom of do_br_cfi:\n {}", cur.func.display(isa));
     }
 }
@@ -139,9 +139,9 @@ fn set_prev_valid_insert_point(cur: &mut EncCursor) {
                 if opcode.writes_cpu_flags() {
                     return;
                 }
-                cur.prev_inst();
             }
         }
+        cur.prev_inst();
     }
 }
 
@@ -173,7 +173,7 @@ pub fn do_cfi_number_allocate(func: &mut Function, isa: &dyn TargetIsa, cfi_star
 pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indirectly_called: bool) {
     let mut cur = EncCursor::new(func, isa);
 
-    if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
+    if cranelift_spectre::inst::DEBUG_MODE && cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
         println!("Function at top of do_cfi_add_checks:\n{}", cur.func.display(isa));
     }
 
@@ -206,7 +206,7 @@ pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indire
         }
     }
 
-    if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
+    if cranelift_spectre::inst::DEBUG_MODE && cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
         println!("Function at bottom of do_cfi_add_checks:\n{}", cur.func.display(isa));
     }
 }
