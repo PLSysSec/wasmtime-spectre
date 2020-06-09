@@ -14,7 +14,7 @@ use crate::binemit::{
     TrapSink,
 };
 use crate::blade::do_blade;
-use crate::cfi::{do_br_cfi, do_cfi_add_checks, do_cfi_number_allocate, do_condbr_cfi};
+use crate::cfi::{do_br_cfi, do_cfi_add_checks, do_cfi_number_allocate, do_cfi_set_correct_labels, do_condbr_cfi};
 use crate::dce::do_dce;
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
@@ -240,6 +240,7 @@ impl Context {
             if pht_mitigation == SpectrePHTMitigation::CFI {
                 self.cfi_number_allocate(isa, cfi_start_num)?;
                 self.cfi_add_checks(isa, can_be_indirectly_called)?;
+                self.cfi_set_correct_labels(isa)?;
             }
 
             let result = self.relax_branches(isa, can_be_indirectly_called);
@@ -516,6 +517,12 @@ impl Context {
     /// Actually add CFI checks
     pub fn cfi_add_checks(&mut self, isa: &dyn TargetIsa, can_be_indirectly_called: bool) -> CodegenResult<()> {
         do_cfi_add_checks(&mut self.func, isa, can_be_indirectly_called);
+        self.verify_if(isa)
+    }
+
+    /// Replace the placeholder CFI labels with the correct ones
+    pub fn cfi_set_correct_labels(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
+        do_cfi_set_correct_labels(&mut self.func, isa);
         self.verify_if(isa)
     }
 

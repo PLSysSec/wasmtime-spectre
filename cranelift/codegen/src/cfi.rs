@@ -193,13 +193,13 @@ pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indire
             let _format = _opcode.format();
             let _enc =  encinfo.display(cur.func.encodings[inst]);
             if first_inst_in_func {
-                cfi_func_checks(&mut cur, can_be_indirectly_called);
+                add_cfi_func_checks(&mut cur, can_be_indirectly_called);
             }
             if first_inst_in_block {
-                cfi_block_checks(&mut cur, first_inst_in_func);
+                add_cfi_block_checks(&mut cur, first_inst_in_func);
             }
 
-            cfi_inst_checks(&mut cur, &inst);
+            add_cfi_inst_checks(&mut cur, &inst);
 
             first_inst_in_block = false;
             first_inst_in_func = false;
@@ -211,7 +211,26 @@ pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indire
     }
 }
 
-fn cfi_func_checks(cur: &mut EncCursor, can_be_indirectly_called: bool) {
+/// Set the correct CFI labels for each branch, jump, call etc instruction
+/// (see notes on `set_labels_for_condbranch()` and `set_labels_for_uncondbranch()`)
+pub fn do_cfi_set_correct_labels(func: &mut Function, isa: &dyn TargetIsa) {
+    let mut cur = EncCursor::new(func, isa);
+
+    while let Some(_block) = cur.next_block() {
+        while let Some(inst) = cur.next_inst() {
+            let opcode = cur.func.dfg[inst].opcode();
+            if opcode == Opcode::BrzCfi || opcode == Opcode::BrnzCfi || opcode == Opcode::BrifCfi || opcode == Opcode::BrffCfi {
+                set_labels_for_condbranch(&mut cur, inst);
+            } else if opcode == Opcode::Jump || opcode == Opcode::Fallthrough || opcode == Opcode::Call || opcode == Opcode::CallIndirect {
+                set_labels_for_uncondbranch(&mut cur, inst);
+            } else if opcode.is_branch() {
+                panic!("Shouldn't see any conditional branch opcode here, they should all have been either handled in one of the above ifs or not exist during this pass. Found a {}", opcode);
+            }
+        }
+    }
+}
+
+fn add_cfi_func_checks(cur: &mut EncCursor, can_be_indirectly_called: bool) {
     if can_be_indirectly_called {
         let block = cur.current_block().unwrap();
         // we now always zero the stack and heap in event of misprediction, to simplify chaining / avoid the control flow laundering problem
@@ -222,7 +241,7 @@ fn cfi_func_checks(cur: &mut EncCursor, can_be_indirectly_called: bool) {
     }
 }
 
-fn cfi_block_checks(cur: &mut EncCursor, is_first_block: bool) {
+fn add_cfi_block_checks(cur: &mut EncCursor, is_first_block: bool) {
     let saved_cursor_position = cur.position();
 
     let block = cur.current_block().unwrap();
@@ -238,11 +257,11 @@ fn cfi_block_checks(cur: &mut EncCursor, is_first_block: bool) {
     cur.set_position(saved_cursor_position);
 }
 
-fn cfi_inst_checks(cur: &mut EncCursor, inst: &Inst) {
+fn add_cfi_inst_checks(cur: &mut EncCursor, inst: &Inst) {
     let opcode = cur.func.dfg[*inst].opcode();
     let _format = opcode.format();
 
-    // First add "top-of-block" CFI checks for "blocks" which are only parts of Cranelift blocks
+    // Here we add "top-of-block" CFI checks for "blocks" which are only parts of Cranelift blocks
     if !opcode.is_terminator()
         && (opcode.is_call() || is_condbr_followed_by_non_jump_or_fallthrough(cur, opcode))
     {
@@ -255,16 +274,6 @@ fn cfi_inst_checks(cur: &mut EncCursor, inst: &Inst) {
         let label = cur.func.cfi_inst_nums[*inst].unwrap();
         let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, true, true);
         cur.func.post_inst_guards[*inst].append(&mut bytes);
-    }
-
-    // Then set the correct CFI labels for each branch, jump, call etc instruction
-    // (see notes on set_labels_for_condbranch() and set_labels_for_uncondbranch())
-    if opcode == Opcode::BrzCfi || opcode == Opcode::BrnzCfi || opcode == Opcode::BrifCfi || opcode == Opcode::BrffCfi {
-        set_labels_for_condbranch(cur, *inst);
-    } else if opcode == Opcode::Jump || opcode == Opcode::Fallthrough || opcode == Opcode::Call || opcode == Opcode::CallIndirect {
-        set_labels_for_uncondbranch(cur, *inst);
-    } else if opcode.is_branch() {
-        panic!("Shouldn't see any conditonal branch opcode here, they should all have been either handled in one of the above ifs or not exist during this pass. Found a {}", opcode);
     }
 }
 
