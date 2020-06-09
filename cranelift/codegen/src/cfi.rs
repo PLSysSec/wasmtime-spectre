@@ -1,5 +1,5 @@
 use crate::cursor::{Cursor, EncCursor};
-use crate::ir::{Inst, InstBuilder, InstructionData, Value, ValueDef, ValueLoc, types};
+use crate::ir::{Block, Inst, InstBuilder, InstructionData, Value, ValueDef, ValueLoc, types};
 use crate::ir::function::Function;
 use crate::ir::instructions::{BranchInfo, Opcode};
 use crate::isa::{registers::RegUnit, TargetIsa};
@@ -31,18 +31,21 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                         // not before the branch itself, in order to not disrupt the flags
                         set_prev_valid_insert_point(&mut cur);
                     }
-                    let block1_label = cur.ins().iconst(types::I64, REPLACE_LABEL_1 as i64);
-                    let block2_label = cur.ins().iconst(types::I64, REPLACE_LABEL_2 as i64);
-                    let new_label = cur
-                        .ins()
-                        .condbr_get_new_cfi_label(block1_label, block2_label);
-
-                    let brinfo = cur.func.dfg.analyze_branch(inst);
-                    let (dest, varargs) = match brinfo {
-                        BranchInfo::SingleDest(dest, varargs) => (dest, varargs),
-                        _ => panic!("Expected conditional branch to be a SingleDest"),
+                    let new_label = {
+                        let block1_label = cur.ins().iconst(types::I64, REPLACE_LABEL_1 as i64);
+                        let block2_label = cur.ins().iconst(types::I64, REPLACE_LABEL_2 as i64);
+                        cur.ins().condbr_get_new_cfi_label(block1_label, block2_label)
                     };
-                    let varargs: Vec<Value> = varargs.to_vec(); // end immutable borrow of cur
+
+                    let (dest, varargs): (Block, Vec<Value>) = {
+                        let brinfo = cur.func.dfg.analyze_branch(inst);
+                        match brinfo {
+                            BranchInfo::SingleDest(dest, varargs) => {
+                                (dest, varargs.to_vec()) // end immutable borrow of cur
+                            }
+                            _ => panic!("Expected conditional branch to be a SingleDest"),
+                        }
+                    };
 
                     // replace the branch instruction with the corresponding CFI branch instruction
                     cur.set_position(saved_position);
