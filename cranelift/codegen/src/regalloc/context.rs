@@ -71,6 +71,17 @@ impl Context {
         &self.liveness
     }
 
+    /// Split branches, add space where to add copy & regmove instructions.
+    pub fn do_branch_splitting(
+        &mut self,
+        isa: &dyn TargetIsa,
+        func: &mut Function,
+        cfg: &mut ControlFlowGraph,
+        domtree: &mut DominatorTree,
+    ) {
+        branch_splitting::run(isa, func, cfg, domtree, &mut self.topo);
+    }
+
     /// Allocate registers in `func`.
     ///
     /// After register allocation, all values in `func` have been assigned to a register or stack
@@ -94,8 +105,7 @@ impl Context {
         // phases.
         self.tracker.clear();
 
-        // Pass: Split branches, add space where to add copy & regmove instructions.
-        branch_splitting::run(isa, func, cfg, domtree, &mut self.topo);
+        // This is where the branch-splitting pass was originally run
 
         // Pass: Liveness analysis.
         self.liveness.compute(isa, func, cfg);

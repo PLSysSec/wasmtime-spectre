@@ -17,7 +17,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
 
     if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
-        println!("Function:\n {}", cur.func.display(isa));
+        println!("Function at top of do_condbr_cfi:\n{}", cur.func.display(isa));
     }
 
     while let Some(_block) = cur.next_block() {
@@ -84,7 +84,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     }
 
     if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
-        println!("Function:\n {}", cur.func.display(isa));
+        println!("Function at bottom of do_condbr_cfi:\n{}", cur.func.display(isa));
     }
 }
 
@@ -92,7 +92,7 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
 
     if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
-        println!("Function:\n {}", cur.func.display(isa));
+        println!("Function at top of do_br_cfi:\n{}", cur.func.display(isa));
     }
 
     while let Some(_block) = cur.next_block() {
@@ -119,7 +119,7 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     }
 
     if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
-        println!("Function:\n {}", cur.func.display(isa));
+        println!("Function at bottom of do_br_cfi:\n {}", cur.func.display(isa));
     }
 }
 
@@ -174,7 +174,7 @@ pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indire
     let mut cur = EncCursor::new(func, isa);
 
     if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
-        println!("Function:\n {}", cur.func.display(isa));
+        println!("Function at top of do_cfi_add_checks:\n{}", cur.func.display(isa));
     }
 
     let mut divert = RegDiversions::new();
@@ -207,7 +207,7 @@ pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indire
     }
 
     if cranelift_spectre::inst::get_curr_func() == "guest_func_main" {
-        println!("Function:\n {}", cur.func.display(isa));
+        println!("Function at bottom of do_cfi_add_checks:\n{}", cur.func.display(isa));
     }
 }
 
@@ -440,8 +440,7 @@ fn get_next_opcode(cur: &mut EncCursor) -> Option<Opcode> {
 }
 
 fn get_prev_opcode(cur: &mut EncCursor) -> Option<Opcode> {
-    let ret = get_prev_inst(cur).map(|inst| cur.func.dfg[inst].opcode());
-    ret
+    get_prev_inst(cur).map(|inst| cur.func.dfg[inst].opcode())
 }
 
 /// Finds the most recent compare instruction which returns flags.

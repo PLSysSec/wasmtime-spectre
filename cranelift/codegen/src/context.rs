@@ -205,6 +205,7 @@ impl Context {
             self.mach_compile_result = Some(result);
             Ok(info)
         } else {
+            self.branch_splitting(isa)?;
             let pht_mitigation = get_spectre_pht_mitigation();
             match pht_mitigation {
                 SpectrePHTMitigation::BLADE => {
@@ -441,6 +442,14 @@ impl Context {
     {
         eliminate_unreachable_code(&mut self.func, &mut self.cfg, &self.domtree);
         self.verify_if(fisa)
+    }
+
+    /// Split branches, add space where to add copy & regmove instructions.
+    pub fn branch_splitting(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
+        self.regalloc.do_branch_splitting(isa, &mut self.func, &mut self.cfg, &mut self.domtree);
+        self.compute_cfg();
+        self.compute_domtree();
+        self.verify_if(isa)
     }
 
     /// Run the register allocator.

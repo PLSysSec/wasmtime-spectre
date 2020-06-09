@@ -327,7 +327,7 @@ fn get_cmov(reg1: u16, reg2: u16, opbyte: u8) -> Vec<u8> {
 }
 
 thread_local! {
-    pub static CURR_COMPILER_FUNC: RefCell<String> = RefCell::new(String::new());
+    static CURR_COMPILER_FUNC: RefCell<String> = RefCell::new(String::new());
 }
 
 pub fn set_curr_func(s: String) {
@@ -372,7 +372,7 @@ pub fn get_cfi_check_bytes(label: u64, zero_r15: bool, zero_rsp: bool) -> Vec<u8
             // Debug
             // 16d:   49 83 fe 0a             cmp    $0xa,%r14
             // 171:   74 07                   je     17a <square.L1>
-            // 179:   cc                      int3  
+            // 179:   cc                      int3
             // 173:   41 be 0a 00 00 00       mov    $0xa,%r14d
 
             bytes.extend_from_slice(&[
