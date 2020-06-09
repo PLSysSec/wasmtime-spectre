@@ -121,6 +121,9 @@ fn is_a_cmp_instruction_returning_flags(opcode: Opcode) -> bool {
     }
 }
 
+/// Sets the cursor to immediately before the most recent instruction that
+/// writes the CPU flags.  (This gives an insertion point where we don't
+/// have to worry about clobbering the flags.)
 fn set_prev_valid_insert_point(cur: &mut EncCursor) {
     let mut seen_write_flags = false;
     loop {
@@ -144,7 +147,7 @@ fn set_prev_valid_insert_point(cur: &mut EncCursor) {
     }
 }
 
-// Assign a unique Cfi number to each linear blocks
+/// Assign a unique CFI number to each linear block
 pub fn do_cfi_number_allocate(func: &mut Function, isa: &dyn TargetIsa, cfi_start_num: &mut u64) {
     let mut cur = EncCursor::new(func, isa);
 
@@ -168,7 +171,6 @@ pub fn do_cfi_number_allocate(func: &mut Function, isa: &dyn TargetIsa, cfi_star
         }
     }
 }
-
 
 pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indirectly_called: bool) {
     let mut cur = EncCursor::new(func, isa);
@@ -434,28 +436,25 @@ fn get_prev_opcode(cur: &mut EncCursor) -> Option<Opcode> {
     get_prev_inst(cur).map(|inst| cur.func.dfg[inst].opcode())
 }
 
-fn get_registers(func: &Function, divert: &RegDiversions, values: &[Value]) -> Vec<RegUnit> {
-    let mut regs = vec![];
-    for value in values {
-        let v = divert.get(*value, &func.locations);
-        match v {
-            ValueLoc::Reg(r) => regs.push(r),
-            _ => (),
-        };
-    }
-    regs
+fn get_registers<'a>(func: &'a Function, divert: &'a RegDiversions, values: impl IntoIterator<Item = Value> + 'a) -> impl Iterator<Item = RegUnit> + 'a {
+    values.into_iter().filter_map( move |v| {
+        match divert.get(v, &func.locations) {
+            ValueLoc::Reg(r) => Some(r),
+            _ => None,
+        }
+    })
 }
 
-fn is_heap_op(isa: &dyn TargetIsa, opcode: Opcode, in_regs: &[RegUnit]) -> bool {
+fn is_heap_op(isa: &dyn TargetIsa, opcode: Opcode, mut in_regs: impl Iterator<Item = RegUnit>) -> bool {
     let r15 = isa.register_info().parse_regunit("r15").unwrap();
     if opcode.can_load() || opcode.can_store() {
-        in_regs.iter().any(|&r| r == r15)
+        in_regs.any(|r| r == r15)
     } else {
         false
     }
 }
 
-fn is_stack_op(isa: &dyn TargetIsa, opcode: Opcode, in_regs: &[RegUnit]) -> bool {
+fn is_stack_op(isa: &dyn TargetIsa, opcode: Opcode, mut in_regs: impl Iterator<Item = RegUnit>) -> bool {
     let rsp = isa.register_info().parse_regunit("rsp").unwrap();
     if opcode.can_load() || opcode.can_store() {
         opcode == Opcode::X86Push
@@ -464,7 +463,7 @@ fn is_stack_op(isa: &dyn TargetIsa, opcode: Opcode, in_regs: &[RegUnit]) -> bool
             || opcode == Opcode::Fill
             || opcode == Opcode::Regspill
             || opcode == Opcode::Regfill
-            || in_regs.iter().any(|&r| r == rsp)
+            || in_regs.any(|r| r == rsp)
     } else {
         false
     }
@@ -494,12 +493,12 @@ fn is_heap_or_stack_op_before_next_ctrl_flow(
         let cur_inst = cur_inst.unwrap();
         let opcode = cur.func.dfg[cur_inst].opcode();
         let args = cur.func.dfg.inst_args(cur_inst);
-        let in_regs = get_registers(&cur.func, &divert, args);
-        let _rets = cur.func.dfg.inst_results(cur_inst);
-        let _out_regs = get_registers(&cur.func, &divert, _rets);
+        let mut in_regs = get_registers(&cur.func, &divert, args.iter().copied());
+        // let _rets = cur.func.dfg.inst_results(cur_inst);
+        // let _out_regs = get_registers(&cur.func, &divert, _rets.iter().copied());
 
-        found_heap_op |= is_heap_op(isa, opcode, &in_regs);
-        found_stack_op |= is_stack_op(isa, opcode, &in_regs);
+        found_heap_op |= is_heap_op(isa, opcode, in_regs.by_ref());
+        found_stack_op |= is_stack_op(isa, opcode, in_regs);
 
         if found_heap_op {
             let _a = 1;
