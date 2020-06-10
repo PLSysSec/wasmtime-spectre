@@ -774,6 +774,12 @@ fn insert_common_prologue(
                 pos.ins().call(callee, &[arg])
             };
 
+            use cranelift_spectre::settings::*;
+            use cranelift_spectre::inst::*;
+            if get_spectre_pht_mitigation() == SpectrePHTMitigation::CFI {
+                pos.func.pre_inst_guards[call] = get_movimm_to_r14(crate::cfi::PROBE_STACK_LABEL);
+            }
+
             // If the probestack function doesn't adjust sp, do it ourselves.
             if !isa.flags().probestack_func_adjusts_sp() {
                 let result = pos.func.dfg.inst_results(call)[0];

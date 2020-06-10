@@ -212,6 +212,14 @@ pub fn get_mov_from_r14(reg: u16) -> &'static [u8] {
     }
 }
 
+// mov r14, imm
+pub fn get_movimm_to_r14(imm: u64) -> Vec<u8> {
+    let mut bytes = vec![0x49, 0xbe];
+    let amt_bytes: [u8; 8] = unsafe { std::mem::transmute(imm.to_le()) };
+    amt_bytes.iter().for_each(|b| bytes.push(*b));
+    return bytes;
+}
+
 pub fn get_cmova(reg1: u16, reg2: u16) -> Vec<u8> {
     get_cmov(reg1, reg2, 0x47)
 }

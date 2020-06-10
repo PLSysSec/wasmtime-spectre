@@ -11,9 +11,12 @@ const REPLACE_LABEL_1: u64 = 5;
 const REPLACE_LABEL_2: u64 = 6;
 const FIRST_BLOCK_LABEL: u64 = 10;
 const RETURN_LABEL: u64 = 10;
+pub const PROBE_STACK_LABEL: u64 = 10;
 const FIXED_LABEL: u64 = 10;
 
-const DEBUG_PRINT_THIS_FUNCTION: &'static str = "guest_func_main";
+// DEBUGMODE DISABLED BY DEFAULT. ONLY ENABLE FOR DEBUGGING
+const DEBUG_PRINT_THIS_FUNCTION: &'static str = "____";
+// DEBUGMODE DISABLED BY DEFAULT. ONLY ENABLE FOR DEBUGGING
 const DEBUG_DONT_INSTRUMENT_THESE_FUNCTIONS: &'static [&'static str] = &[
     "dlmalloc",
 ];
@@ -37,7 +40,7 @@ fn should_instrument() -> bool {
 pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
 
-    if cranelift_spectre::inst::DEBUG_MODE && should_print() {
+    if should_print() {
         println!("Function at top of do_condbr_cfi:\n{}", cur.func.display(isa));
     }
     if cranelift_spectre::inst::DEBUG_MODE && !should_instrument() {
@@ -110,7 +113,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
         }
     }
 
-    if cranelift_spectre::inst::DEBUG_MODE && should_print() {
+    if should_print() {
         println!("Function at bottom of do_condbr_cfi:\n{}", cur.func.display(isa));
     }
 }
@@ -118,7 +121,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
 pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
 
-    if cranelift_spectre::inst::DEBUG_MODE && should_print() {
+    if should_print() {
         println!("Function at top of do_br_cfi:\n{}", cur.func.display(isa));
     }
     if cranelift_spectre::inst::DEBUG_MODE && !should_instrument() {
@@ -187,7 +190,7 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
         }
     }
 
-    if cranelift_spectre::inst::DEBUG_MODE && should_print() {
+    if should_print() {
         println!("Function at bottom of do_br_cfi:\n {}", cur.func.display(isa));
     }
 }
@@ -242,7 +245,7 @@ pub fn do_cfi_number_allocate(func: &mut Function, isa: &dyn TargetIsa, cfi_star
 pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indirectly_called: bool) {
     let mut cur = EncCursor::new(func, isa);
 
-    if cranelift_spectre::inst::DEBUG_MODE && should_print() {
+    if should_print() {
         println!("Function at top of do_cfi_add_checks:\n{}", cur.func.display(isa));
     }
     if cranelift_spectre::inst::DEBUG_MODE && !should_instrument() {
@@ -278,7 +281,7 @@ pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indire
         }
     }
 
-    if cranelift_spectre::inst::DEBUG_MODE && should_print() {
+    if should_print() {
         println!("Function at bottom of do_cfi_add_checks:\n{}", cur.func.display(isa));
     }
 }
