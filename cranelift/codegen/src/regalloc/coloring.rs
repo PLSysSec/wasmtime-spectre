@@ -1104,8 +1104,8 @@ impl<'a> Context<'a> {
                 !lr.is_local()
                     && (block.map_or(false, |block| lr.is_livein(block, layout))
                         || self.cur.func.jump_tables[jt]
-                            .iter()
-                            .any(|block| lr.is_livein(*block, layout)))
+                            .iter_blocks()
+                            .any(|block| lr.is_livein(block, layout)))
             }
         }
     }

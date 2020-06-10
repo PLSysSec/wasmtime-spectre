@@ -377,8 +377,8 @@ impl<'a> LocationVerifier<'a> {
                             ));
                         }
                     }
-                    for block in self.func.jump_tables[jt].iter() {
-                        if lr.is_livein(*block, &self.func.layout) {
+                    for block in self.func.jump_tables[jt].iter_blocks() {
+                        if lr.is_livein(block, &self.func.layout) {
                             return errors.fatal((
                                 inst,
                                 format!(

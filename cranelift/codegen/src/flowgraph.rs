@@ -129,8 +129,8 @@ impl ControlFlowGraph {
                     if let Some(dest) = dest {
                         self.add_edge(block, inst, dest);
                     }
-                    for dest in func.jump_tables[jt].iter() {
-                        self.add_edge(block, inst, *dest);
+                    for dest in func.jump_tables[jt].iter_blocks() {
+                        self.add_edge(block, inst, dest);
                     }
                 }
                 BranchInfo::NotABranch => {}

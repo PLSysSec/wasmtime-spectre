@@ -8,13 +8,20 @@ use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 use core::slice::{Iter, IterMut};
 
+// for now we are limited to storing 32-bit labels in the jump table
+// this is because the x86 encoding of jump_table_entry requires that
+// the table entry size is a valid SIB byte (as determined by the
+// `valid_scale()` function), of which 8 is the largest valid value
+type CFILabel = u32;
+const LABEL_VALUE: CFILabel = 10;
+
 /// Contents of a jump table.
 ///
 /// All jump tables use 0-based indexing and are densely populated.
 #[derive(Clone)]
 pub struct JumpTableData {
     // Table entries.
-    table: Vec<Block>,
+    table: Vec<(Block, CFILabel)>,
 }
 
 impl JumpTableData {
@@ -37,32 +44,43 @@ impl JumpTableData {
 
     /// Append a table entry.
     pub fn push_entry(&mut self, dest: Block) {
-        self.table.push(dest)
+        // for now we use the constant LABEL_VALUE
+        self.table.push((dest, LABEL_VALUE))
     }
 
     /// Checks if any of the entries branch to `block`.
     pub fn branches_to(&self, block: Block) -> bool {
-        self.table.iter().any(|target_block| *target_block == block)
+        self.table.iter().any(|(target_block, _)| *target_block == block)
     }
 
     /// Access the whole table as a slice.
-    pub fn as_slice(&self) -> &[Block] {
+    pub fn as_slice(&self) -> &[(Block, CFILabel)] {
         self.table.as_slice()
     }
 
     /// Access the whole table as a mutable slice.
-    pub fn as_mut_slice(&mut self) -> &mut [Block] {
+    pub fn as_mut_slice(&mut self) -> &mut [(Block, CFILabel)] {
         self.table.as_mut_slice()
     }
 
-    /// Returns an iterator over the table.
-    pub fn iter(&self) -> Iter<Block> {
+    /// Returns an iterator over the (block, label) pairs in the table.
+    pub fn iter(&self) -> Iter<(Block, CFILabel)> {
         self.table.iter()
     }
 
-    /// Returns an iterator that allows modifying each value.
-    pub fn iter_mut(&mut self) -> IterMut<Block> {
+    /// Returns an iterator that allows modifying each (block, label) pair.
+    pub fn iter_mut(&mut self) -> IterMut<(Block, CFILabel)> {
         self.table.iter_mut()
+    }
+
+    /// Returns an iterator over the blocks in the table.
+    pub fn iter_blocks<'a>(&'a self) -> impl Iterator<Item = Block> + 'a {
+        self.iter().map(|&(block, _)| block)
+    }
+
+    /// Returns an iterator that allows modifying each block in the table.
+    pub fn iter_mut_blocks<'a>(&'a mut self) -> impl Iterator<Item = &'a mut Block> + 'a {
+        self.iter_mut().map(|(block, _)| block)
     }
 }
 
@@ -71,10 +89,10 @@ impl Display for JumpTableData {
         write!(fmt, "jump_table [")?;
         match self.table.first() {
             None => (),
-            Some(first) => write!(fmt, "{}", first)?,
+            Some((first_block, first_label)) => write!(fmt, "{} [{}]", first_block, first_label)?,
         }
-        for block in self.table.iter().skip(1) {
-            write!(fmt, ", {}", block)?;
+        for (block, label) in self.table.iter().skip(1) {
+            write!(fmt, ", {} [{}]", block, label)?;
         }
         write!(fmt, "]")
     }

@@ -720,7 +720,7 @@ fn visit_branch_targets<F: FnMut(Block)>(f: &Function, block: Block, inst: Inst,
                 if let Some(dest) = maybe_dest {
                     visit(dest);
                 }
-                for &dest in f.jump_tables[table].as_slice() {
+                for dest in f.jump_tables[table].iter_blocks() {
                     visit(dest);
                 }
             }

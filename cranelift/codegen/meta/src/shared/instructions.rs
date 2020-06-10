@@ -307,6 +307,27 @@ fn define_control_flow(
 
         ig.push(
             Inst::new(
+                "jump_table_entry_cfi",
+                r#"
+    Get an entry from a jump table, also setting the CFI label register (r14)
+    appropriately.
+
+    Load a serialized ``entry`` from a jump table ``JT`` at a given index
+    ``addr`` with a specific ``Size``. The retrieved entry may need to be
+    decoded after loading, depending upon the jump table type used.
+
+    Currently, the only type supported is entries which are relative to the
+    base of the jump table.
+    "#,
+                &formats.branch_table_entry,
+            )
+            .operands_in(vec![x, addr, Size, JT])
+            .operands_out(vec![entry])
+            .can_load(true),
+        );
+
+        ig.push(
+            Inst::new(
                 "jump_table_base",
                 r#"
     Get the absolute base address of a jump table.

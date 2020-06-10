@@ -2327,6 +2327,7 @@ fn define_control_flow(
     let jump = shared.by_name("jump");
     let jump_table_base = shared.by_name("jump_table_base");
     let jump_table_entry = shared.by_name("jump_table_entry");
+    let jump_table_entry_cfi = shared.by_name("jump_table_entry_cfi");
     let return_ = shared.by_name("return");
     let trap = shared.by_name("trap");
     let trapff = shared.by_name("trapff");
@@ -2351,6 +2352,7 @@ fn define_control_flow(
     let rec_jmpd = r.template("jmpd");
     let rec_jt_base = r.template("jt_base");
     let rec_jt_entry = r.template("jt_entry");
+    let rec_jt_entry_cfi = r.template("jt_entry_cfi");
     let rec_ret = r.template("ret");
     let rec_t8jccb_abcd = r.template("t8jccb_abcd");
     let rec_t8jccb_abcd_cfi = r.template("t8jccb_abcd_cfi");
@@ -2456,7 +2458,12 @@ fn define_control_flow(
         jump_table_entry.bind(I64),
         rec_jt_entry.opcodes(&MOVSXD).rex().w(),
     );
+    e.enc64(
+        jump_table_entry_cfi.bind(I64),
+        rec_jt_entry_cfi.opcodes(&MOVSXD).rex().w(),
+    );
     e.enc32(jump_table_entry.bind(I32), rec_jt_entry.opcodes(&MOV_LOAD));
+    e.enc32(jump_table_entry_cfi.bind(I32), rec_jt_entry_cfi.opcodes(&MOV_LOAD));
 
     e.enc64(
         jump_table_base.bind(I64),

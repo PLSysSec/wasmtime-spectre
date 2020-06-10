@@ -14,7 +14,7 @@
 //! from the encoding recipes, and solved later by the register allocator.
 
 use crate::bitset::BitSet;
-use crate::cursor::{Cursor, FuncCursor};
+use crate::cursor::{Cursor, EncCursor};
 use crate::flowgraph::ControlFlowGraph;
 use crate::ir::types::{I32, I64};
 use crate::ir::{self, InstBuilder, MemFlags};
@@ -39,7 +39,7 @@ use self::libcall::expand_as_libcall;
 use self::table::expand_table_addr;
 
 use cranelift_spectre::settings::{
-    get_spectre_pht_mitigation, SpectrePHTMitigation,
+    get_spectre_mitigation, get_spectre_pht_mitigation, SpectreMitigation, SpectrePHTMitigation,
 };
 
 enum LegalizeInstResult {
@@ -51,7 +51,7 @@ enum LegalizeInstResult {
 /// Legalize `inst` for `isa`.
 fn legalize_inst(
     inst: ir::Inst,
-    pos: &mut FuncCursor,
+    pos: &mut EncCursor,
     cfg: &mut ControlFlowGraph,
     isa: &dyn TargetIsa,
 ) -> LegalizeInstResult {
@@ -149,7 +149,7 @@ pub fn legalize_function(func: &mut ir::Function, cfg: &mut ControlFlowGraph, is
 
     func.encodings.resize(func.dfg.num_insts());
 
-    let mut pos = FuncCursor::new(func);
+    let mut pos = EncCursor::new(func, isa);
     let func_begin = pos.position();
 
     // Split block params before trying to legalize instructions, so that the newly introduced
@@ -203,7 +203,7 @@ pub fn legalize_function(func: &mut ir::Function, cfg: &mut ControlFlowGraph, is
 /// Perform a simple legalization by expansion of the function, without
 /// platform-specific transforms.
 pub fn simple_legalize(func: &mut ir::Function, cfg: &mut ControlFlowGraph, isa: &dyn TargetIsa) {
-    let mut pos = FuncCursor::new(func);
+    let mut pos = EncCursor::new(func, isa);
     let func_begin = pos.position();
     pos.set_position(func_begin);
     while let Some(_block) = pos.next_block() {
@@ -261,7 +261,7 @@ fn expand_cond_trap(
     inst: ir::Inst,
     func: &mut ir::Function,
     cfg: &mut ControlFlowGraph,
-    _isa: &dyn TargetIsa,
+    isa: &dyn TargetIsa,
 ) {
     // Parse the instruction.
     let trapz;
@@ -305,7 +305,7 @@ fn expand_cond_trap(
     }
 
     // Add jump instruction after the inverted branch.
-    let mut pos = FuncCursor::new(func).after_inst(inst);
+    let mut pos = EncCursor::new(func, isa).after_inst(inst);
     pos.use_srcloc(inst);
     pos.ins().jump(new_block_trap, &[]);
 
@@ -329,7 +329,7 @@ fn expand_br_table(
     cfg: &mut ControlFlowGraph,
     isa: &dyn TargetIsa,
 ) {
-    if isa.flags().enable_jump_tables() && get_spectre_pht_mitigation() != SpectrePHTMitigation::CFI {
+    if isa.flags().enable_jump_tables() {
         expand_br_table_jt(inst, func, cfg, isa);
     } else {
         expand_br_table_conds(inst, func, cfg, isa);
@@ -374,14 +374,14 @@ fn expand_br_table_jt(
     let block = func.layout.pp_block(inst);
     let jump_table_block = func.dfg.make_block();
 
-    let mut pos = FuncCursor::new(func).at_inst(inst);
+    let mut pos = EncCursor::new(func, isa).at_inst(inst);
     pos.use_srcloc(inst);
 
     // Bounds check.
     let table_size = pos.func.jump_tables[table].len() as i64;
-    let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
+    let mitigation = get_spectre_mitigation();
 
-    if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
+    if mitigation == SpectreMitigation::SFI {
         if !((table_size as u64).is_power_of_two()) {
             // SFI scheme guarantees through changes elsewhere that callback tables are always powers of 2
             panic!("Spectre SFI scheme failure. Expected power of 2 for jump table");
@@ -407,14 +407,20 @@ fn expand_br_table_jt(
         pos.ins().uextend(addr_ty, arg)
     };
 
-    if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
+    if mitigation == SpectreMitigation::SFI {
         arg = pos.ins().band_imm(arg, table_size - 1);
     }
+
+    let jump_table_entry_size_bytes = if get_spectre_pht_mitigation() == SpectrePHTMitigation::CFI {
+        4 + 4 // 4 for the offset, 4 for the CFI label
+    } else {
+        4
+    };
 
     let base_addr = pos.ins().jump_table_base(addr_ty, table);
     let entry = pos
         .ins()
-        .jump_table_entry(arg, base_addr, I32.bytes() as u8, table);
+        .jump_table_entry(arg, base_addr, jump_table_entry_size_bytes, table);
 
     let addr = pos.ins().iadd(base_addr, entry);
     pos.ins().indirect_jump_table_br(addr, table);
@@ -423,11 +429,11 @@ fn expand_br_table_jt(
     cfg.recompute_block(pos.func, block);
     cfg.recompute_block(pos.func, jump_table_block);
 
-    if mitigation == cranelift_spectre::settings::SpectreMitigation::CET {
+    if mitigation == SpectreMitigation::CET {
         let ebbs = pos.func.jump_tables[table].clone();
-        for ebb in ebbs.iter() {
-            pos.func.block_endbranch[*ebb] = true;
-            pos.func.block_lfence[*ebb] = true;
+        for ebb in ebbs.iter_blocks() {
+            pos.func.block_endbranch[ebb] = true;
+            pos.func.block_lfence[ebb] = true;
         }
     }
 }
@@ -437,7 +443,7 @@ fn expand_br_table_conds(
     inst: ir::Inst,
     func: &mut ir::Function,
     cfg: &mut ControlFlowGraph,
-    _isa: &dyn TargetIsa,
+    isa: &dyn TargetIsa,
 ) {
     use crate::ir::condcodes::IntCC;
 
@@ -463,13 +469,13 @@ fn expand_br_table_conds(
         }
     }
 
-    let mut pos = FuncCursor::new(func).at_inst(inst);
+    let mut pos = EncCursor::new(func, isa).at_inst(inst);
     pos.use_srcloc(inst);
 
     // Ignore the lint for this loop as the range needs to be 0 to table_size
     #[allow(clippy::needless_range_loop)]
     for i in 0..table_size {
-        let dest = pos.func.jump_tables[table].as_slice()[i];
+        let (dest, _) = pos.func.jump_tables[table].as_slice()[i];
         let t = pos.ins().icmp_imm(IntCC::Equal, arg, i as i64);
         pos.ins().brnz(t, dest, &[]);
         // Jump to the next case.
@@ -498,7 +504,7 @@ fn expand_select(
     inst: ir::Inst,
     func: &mut ir::Function,
     cfg: &mut ControlFlowGraph,
-    _isa: &dyn TargetIsa,
+    isa: &dyn TargetIsa,
 ) {
     let (ctrl, tval, fval) = match func.dfg[inst] {
         ir::InstructionData::Ternary {
@@ -520,7 +526,7 @@ fn expand_select(
     func.dfg.attach_block_param(new_block, result);
 
     func.dfg.replace(inst).brnz(ctrl, new_block, &[tval]);
-    let mut pos = FuncCursor::new(func).after_inst(inst);
+    let mut pos = EncCursor::new(func, isa).after_inst(inst);
     pos.use_srcloc(inst);
     pos.ins().jump(new_block, &[fval]);
     pos.insert_block(new_block);
@@ -533,7 +539,7 @@ fn expand_br_icmp(
     inst: ir::Inst,
     func: &mut ir::Function,
     cfg: &mut ControlFlowGraph,
-    _isa: &dyn TargetIsa,
+    isa: &dyn TargetIsa,
 ) {
     let (cond, a, b, destination, block_args) = match func.dfg[inst] {
         ir::InstructionData::BranchIcmp {
@@ -555,7 +561,7 @@ fn expand_br_icmp(
     func.dfg.clear_results(inst);
 
     let icmp_res = func.dfg.replace(inst).icmp(cond, a, b);
-    let mut pos = FuncCursor::new(func).after_inst(inst);
+    let mut pos = EncCursor::new(func, isa).after_inst(inst);
     pos.use_srcloc(inst);
     pos.ins().brnz(icmp_res, destination, &block_args);
 
@@ -568,14 +574,14 @@ fn expand_fconst(
     inst: ir::Inst,
     func: &mut ir::Function,
     _cfg: &mut ControlFlowGraph,
-    _isa: &dyn TargetIsa,
+    isa: &dyn TargetIsa,
 ) {
     let ty = func.dfg.value_type(func.dfg.first_result(inst));
     debug_assert!(!ty.is_vector(), "Only scalar fconst supported: {}", ty);
 
     // In the future, we may want to generate constant pool entries for these constants, but for
     // now use an `iconst` and a bit cast.
-    let mut pos = FuncCursor::new(func).at_inst(inst);
+    let mut pos = EncCursor::new(func, isa).at_inst(inst);
     pos.use_srcloc(inst);
     let ival = match pos.func.dfg[inst] {
         ir::InstructionData::UnaryIeee32 {
@@ -601,7 +607,7 @@ fn expand_stack_load(
     let ty = func.dfg.value_type(func.dfg.first_result(inst));
     let addr_ty = isa.pointer_type();
 
-    let mut pos = FuncCursor::new(func).at_inst(inst);
+    let mut pos = EncCursor::new(func, isa).at_inst(inst);
     pos.use_srcloc(inst);
 
     let (stack_slot, offset) = match pos.func.dfg[inst] {
@@ -632,7 +638,7 @@ fn expand_stack_store(
 ) {
     let addr_ty = isa.pointer_type();
 
-    let mut pos = FuncCursor::new(func).at_inst(inst);
+    let mut pos = EncCursor::new(func, isa).at_inst(inst);
     pos.use_srcloc(inst);
 
     let (val, stack_slot, offset) = match pos.func.dfg[inst] {
@@ -662,9 +668,9 @@ fn narrow_load(
     inst: ir::Inst,
     func: &mut ir::Function,
     _cfg: &mut ControlFlowGraph,
-    _isa: &dyn TargetIsa,
+    isa: &dyn TargetIsa,
 ) {
-    let mut pos = FuncCursor::new(func).at_inst(inst);
+    let mut pos = EncCursor::new(func, isa).at_inst(inst);
     pos.use_srcloc(inst);
 
     let (ptr, offset, flags) = match pos.func.dfg[inst] {
@@ -695,9 +701,9 @@ fn narrow_store(
     inst: ir::Inst,
     func: &mut ir::Function,
     _cfg: &mut ControlFlowGraph,
-    _isa: &dyn TargetIsa,
+    isa: &dyn TargetIsa,
 ) {
-    let mut pos = FuncCursor::new(func).at_inst(inst);
+    let mut pos = EncCursor::new(func, isa).at_inst(inst);
     pos.use_srcloc(inst);
 
     let (val, ptr, offset, flags) = match pos.func.dfg[inst] {
@@ -738,7 +744,7 @@ fn narrow_iconst(
         panic!("unexpected instruction in narrow_iconst");
     };
 
-    let mut pos = FuncCursor::new(func).at_inst(inst);
+    let mut pos = EncCursor::new(func, isa).at_inst(inst);
     pos.use_srcloc(inst);
 
     let ty = pos.func.dfg.ctrl_typevar(inst);
@@ -757,7 +763,7 @@ fn narrow_icmp_imm(
     inst: ir::Inst,
     func: &mut ir::Function,
     _cfg: &mut ControlFlowGraph,
-    _isa: &dyn TargetIsa,
+    isa: &dyn TargetIsa,
 ) {
     use crate::ir::condcodes::{CondCode, IntCC};
 
@@ -771,7 +777,7 @@ fn narrow_icmp_imm(
         _ => panic!("unexpected instruction in narrow_icmp_imm"),
     };
 
-    let mut pos = FuncCursor::new(func).at_inst(inst);
+    let mut pos = EncCursor::new(func, isa).at_inst(inst);
     pos.use_srcloc(inst);
 
     let ty = pos.func.dfg.ctrl_typevar(inst);

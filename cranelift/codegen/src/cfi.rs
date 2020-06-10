@@ -1,5 +1,5 @@
 use crate::cursor::{Cursor, EncCursor};
-use crate::ir::{Block, Inst, InstBuilder, InstructionData, Value, ValueDef, ValueLoc, types};
+use crate::ir::{types, Block, Inst, InstBuilder, InstructionData, Value, ValueDef, ValueLoc};
 use crate::ir::function::Function;
 use crate::ir::instructions::{BranchInfo, Opcode};
 use crate::isa::{registers::RegUnit, TargetIsa};
@@ -37,6 +37,7 @@ fn should_instrument() -> bool {
     }
 }
 
+/// Insert the appropriate CFI boilerplate before each conditional branch
 pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
 
@@ -118,6 +119,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     }
 }
 
+/// Insert the appropriate CFI boilerplate before each unconditional jump
 pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
 
@@ -192,6 +194,52 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
 
     if should_print() {
         println!("Function at bottom of do_br_cfi:\n {}", cur.func.display(isa));
+    }
+}
+
+/// Insert the appropriate CFI boilerplate surrounding indirect jumps (jump tables)
+pub fn do_indirectbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
+    let mut cur = EncCursor::new(func, isa);
+
+    if cranelift_spectre::inst::DEBUG_MODE && should_print() {
+        println!("Function at top of do_indirectbr_cfi:\n{}", cur.func.display(isa));
+    }
+    if cranelift_spectre::inst::DEBUG_MODE && !should_instrument() {
+        return
+    }
+
+    while let Some(_block) = cur.next_block() {
+        while let Some(inst) = cur.next_inst() {
+            let opcode = cur.func.dfg[inst].opcode();
+            match opcode {
+                Opcode::BrTable => {
+                    panic!("This pass needs to run after BrTable has been legalized into smaller instructions");
+                }
+                Opcode::JumpTableEntry => {
+                    // replace with JumpTableEntryCFI
+                    let (args, imm, table) = match &cur.func.dfg[inst] {
+                        InstructionData::BranchTableEntry { args, imm, table, .. } => (args.to_vec(), *imm, *table),
+                        instdata => panic!("Expected a BranchTableEntry, got {:?}", instdata),
+                    };
+                    let result = cur.func.dfg.first_result(inst);
+                    cur.func.dfg.detach_results(inst);
+                    cur.remove_inst();
+                    let _ = cur.ins().jump_table_entry_cfi(args[0], args[1], imm, table);
+                    let new_inst = cur.built_inst();
+                    cur.func.dfg.clear_results(new_inst);
+                    cur.func.dfg.attach_result(new_inst, result);
+                }
+                Opcode::IndirectJumpTableBr => {
+                    // We don't actually need to do anything for this -- everything
+                    // was done in JumpTableEntryCFI
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if cranelift_spectre::inst::DEBUG_MODE && should_print() {
+        println!("Function at bottom of do_indirectbr_cfi:\n {}", cur.func.display(isa));
     }
 }
 
@@ -302,11 +350,15 @@ pub fn do_cfi_set_correct_labels(func: &mut Function, isa: &dyn TargetIsa) {
                 set_labels_for_condbranch(&mut cur, inst);
             } else if opcode == Opcode::Jump || opcode == Opcode::Fallthrough || opcode == Opcode::Call || opcode == Opcode::CallIndirect {
                 set_labels_for_uncondbranch(isa, &mut cur, inst);
+            } else if opcode == Opcode::IndirectJumpTableBr {
+                // these are handled all at once, below
             } else if opcode.is_branch() {
-                panic!("Shouldn't see any conditional branch opcode here, they should all have been either handled in one of the above ifs or not exist during this pass. Found a {}", opcode);
+                panic!("Shouldn't see any branch opcode here, they should all have been either handled in one of the above ifs or not exist during this pass. Found a {}", opcode);
             }
         }
     }
+
+    set_labels_for_jumptablebr(&mut cur.func);
 }
 
 fn add_cfi_func_checks(cur: &mut EncCursor, can_be_indirectly_called: bool) {
@@ -464,6 +516,18 @@ fn set_labels_for_uncondbranch(_isa: &dyn TargetIsa, cur: &mut EncCursor, inst: 
     //         cur.func.dfg.replace(call_label_inst).iconst(types::I64, post_call_label as i64);
     //     }
     // }
+}
+
+/// Put in the correct real CFI numbers for jump tables.
+fn set_labels_for_jumptablebr(func: &mut Function) {
+    // TODO: for now we just ensure that the jump table entries all contain constant FIXED_LABEL
+    for (jt, jtdata) in func.jump_tables.iter() {
+        for &(block, label) in jtdata.iter() {
+            if label != (FIXED_LABEL as u32) {
+                panic!("Incorrect jump table entry label: found label {} for block {} in jump table {:?}", label, block, jt);
+            }
+        }
+    }
 }
 
 /// Get the first previous inst with opcode == Opcode::CondbrGetNewCfiLabel

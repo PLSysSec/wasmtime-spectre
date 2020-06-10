@@ -136,13 +136,13 @@ impl<'short, 'long> InstBuilderBase<'short> for FuncInstBuilder<'short, 'long> {
                             .jump_tables
                             .get(table)
                             .expect("you are referencing an undeclared jump table")
-                            .iter()
-                            .filter(|&dest_block| unique.insert(*dest_block))
+                            .iter_blocks()
+                            .filter(|&dest_block| unique.insert(dest_block))
                         {
                             // Call `declare_block_predecessor` instead of `declare_successor` for
                             // avoiding the borrow checker.
                             self.builder.func_ctx.ssa.declare_block_predecessor(
-                                *dest_block,
+                                dest_block,
                                 self.builder.position.unwrap(),
                                 inst,
                             );
