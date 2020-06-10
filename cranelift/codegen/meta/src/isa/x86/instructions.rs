@@ -269,41 +269,21 @@ pub(crate) fn define(
             .ints(CFI_LABEL_SIZE_BITS..CFI_LABEL_SIZE_BITS)
             .build(),
     );
-    let block1_label = &Operand::new("block1_label", block_label);
-    let block2_label = &Operand::new("block2_label", block_label);
     let cfi_label = &Operand::new("cfi_label", block_label);
+
+    let imm64 = &immediates.imm64;
+    let block_label_imm = &Operand::new("i", imm64,).with_doc( "An immediate representing the block label");
 
     ig.push(
         Inst::new(
             "condbr_get_new_cfi_label",
             r#"
-    Get the new cfi label which should be `cmov`d into `r14` if the branch condition is true.
-
-    If `r14` is currently zero (we're currently on the right path), then this instruction
-    will set `r14` to `block1_label` and return `block2_label`.
-
-    If `r14` is currently nonzero (we're currently on the wrong path), then this instruction
-    will leave `r14` alone and also return `r14`.
-
-    The full sequence is:
-    ```
-            ----
-            | test r14, r14
-     this   | cmovz r14, block1_label
-     instr  |
-     uction | mov tmp, r14
-            | cmovz tmp, block2_label
-            ----
-
-            < set flags for branch condition >
-            cmovx r14, tmp
-            jx
-    ```
-    where this instruction takes `block1_label` and `block2_label` as inputs and returns `tmp`.
+    This sets a temp register (`r14`) to the label given as an
+    argument to this instruction.
     "#,
-            &formats.binary,
+            &formats.unary_imm,
         )
-        .operands_in(vec![block1_label, block2_label])
+        .operands_in(vec![block_label_imm])
         .operands_out(vec![cfi_label]),
     );
 
@@ -312,12 +292,11 @@ pub(crate) fn define(
             "conditionally_set_cfi_label",
             r#"
     This sets the CFI label register (`r14`) to the label given as an
-    argument to this instruction, but only if the CFI label register
-    was currently 0 (indicating we're on the right path).
+    argument to this instruction.
     "#,
-            &formats.unary,
+            &formats.unary_imm,
         )
-        .operands_in(vec![cfi_label]),
+        .operands_in(vec![block_label_imm]),
     );
 
     let uimm8 = &immediates.uimm8;

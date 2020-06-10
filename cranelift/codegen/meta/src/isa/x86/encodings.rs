@@ -1374,8 +1374,8 @@ fn define_alu(
     let rec_setf_abcd = r.template("setf_abcd");
     let rec_seti_abcd = r.template("seti_abcd");
     let rec_urm = r.template("urm");
-    let rec_new_cfi_label = r.recipe("condbr_get_new_cfi_label");
-    let rec_cond_set_cfi_label = r.recipe("conditionally_set_cfi_label");
+    let rec_new_cfi_label = r.template("condbr_get_new_cfi_label");
+    let rec_cond_set_cfi_label = r.template("conditionally_set_cfi_label");
 
     // Predicates shorthands.
     let use_popcnt = settings.predicate_by_name("use_popcnt");
@@ -1541,8 +1541,8 @@ fn define_alu(
     e.enc_i32_i64(x86_bsf, rec_bsf_and_bsr.opcodes(&BIT_SCAN_FORWARD));
     e.enc_i32_i64(x86_bsr, rec_bsf_and_bsr.opcodes(&BIT_SCAN_REVERSE));
 
-    e.enc64_rec(condbr_get_new_cfi_label, rec_new_cfi_label, 0);
-    e.enc64_rec(cond_set_cfi_label, rec_cond_set_cfi_label, 0);
+    e.enc64(condbr_get_new_cfi_label, rec_new_cfi_label.opcodes(&MOV_IMM).rex().w());
+    e.enc64(cond_set_cfi_label, rec_cond_set_cfi_label.opcodes(&MOV_IMM).rex().w());
 
     // Comparisons
     e.enc_i32_i64(icmp, rec_icscc.opcodes(&CMP_REG));

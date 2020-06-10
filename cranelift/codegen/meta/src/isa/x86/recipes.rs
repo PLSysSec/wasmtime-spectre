@@ -2904,39 +2904,44 @@ pub(crate) fn define<'shared>(
         .inferred_rex_compute_size("size_with_inferred_rex_for_inreg0_outreg0"),
     );
 
-    recipes.add_recipe(
-        EncodingRecipeBuilder::new(
-            "condbr_get_new_cfi_label",
-            &formats.binary,
-            14)
-        .operands_in(vec![gpr, gpr])
-        .operands_out(vec![gpr])
-        .clobbers_flags(true)
-        .emit(
-        r#"
-                let bytes = cranelift_spectre::inst::get_condbr_new_cfi_label_bytes(in_reg0, in_reg1, out_reg0);
-                bytes.iter().for_each(|&b| sink.put1(b));
-            "#,
+    recipes.add_template(
+        Template::new(
+            EncodingRecipeBuilder::new(
+                "condbr_get_new_cfi_label",
+                &formats.unary_imm,
+                8)
+            .operands_out(vec![gpr])
+            .clobbers_flags(false)
+            .emit(
+            r#"
+                    // mov tmp, new_label
+                    {{PUT_OP}}(bits | (out_reg0 & 7), rex1(out_reg0), sink);
+                    let imm: i64 = imm.into();
+                    sink.put8(imm as u64);
+                "#,
+            ),
+            regs,
         )
     );
 
-    recipes.add_recipe(
-        EncodingRecipeBuilder::new(
-            "conditionally_set_cfi_label",
-            &formats.unary,
-            TEST_SIZE + CMOV_SIZE,
-        ).operands_in(vec![gpr])
-        .clobbers_flags(true)
-        .emit(
-            r#"
-                use cranelift_spectre::inst::R_R14;
-                // test r14, r14
-                let bytes = cranelift_spectre::inst::get_test_bytes(R_R14);
-                bytes.iter().for_each(|&b| sink.put1(b));
-                // cmovz r14, new_label
-                let bytes = cranelift_spectre::inst::get_cmovz(R_R14, in_reg0);
-                bytes.iter().for_each(|&b| sink.put1(b));
-            "#,
+    recipes.add_template(
+        Template::new(
+            EncodingRecipeBuilder::new(
+                "conditionally_set_cfi_label",
+                &formats.unary_imm,
+                8,
+            )
+            .clobbers_flags(false)
+            .emit(
+                r#"
+                    let r14 = RU::r14.into();
+                    // mov r14, new_label
+                    {{PUT_OP}}(bits | (r14 & 7), rex1(r14), sink);
+                    let imm: i64 = imm.into();
+                    sink.put8(imm as u64);
+                "#,
+            ),
+            regs,
         )
     );
 
@@ -3139,7 +3144,6 @@ pub(crate) fn define<'shared>(
     );
 
     const CMOV_SIZE: u64 = 4;
-    const TEST_SIZE: u64 = 3;
 
     recipes.add_template(
         Template::new(
