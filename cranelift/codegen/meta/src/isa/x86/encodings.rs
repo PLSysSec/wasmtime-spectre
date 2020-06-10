@@ -2439,7 +2439,7 @@ fn define_control_flow(
     e.enc_both(brz.bind(B1), rec_t8jccb_abcd.opcodes(&JUMP_SHORT_IF_EQUAL));
     e.enc_both(brz_cfi.bind(B1), rec_t8jccb_abcd_cfi.opcodes(&JUMP_SHORT_IF_EQUAL));
     e.enc_both(brz.bind(B1), rec_t8jccd_abcd.opcodes(&TEST_BYTE_REG));
-    e.enc_both(brz_cfi.bind(B1), rec_t8jccb_abcd_cfi.opcodes(&JUMP_SHORT_IF_EQUAL));
+    e.enc_both(brz_cfi.bind(B1), rec_t8jccd_abcd_cfi.opcodes(&JUMP_SHORT_IF_EQUAL));
     e.enc_both(
         brnz.bind(B1),
         rec_t8jccb_abcd.opcodes(&JUMP_SHORT_IF_NOT_EQUAL),
