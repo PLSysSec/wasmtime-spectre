@@ -111,7 +111,46 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                         let new_label = cur.ins().iconst(types::I64, REPLACE_LABEL_1 as i64);
                         cur.ins().conditionally_set_cfi_label(new_label);
                     }
+
+                    // TODO: DISABLED FOR NOW
+                    // // For calls, we also need to pass in the return label as the first parameter
+                    // if opcode == Opcode::Call  { // || opcode == Opcode::CallIndirect
+                    //     // normally first param to a function is the sbx heap
+                    //     // but we always use pinned heap regs when using cfi
+                    //     // so let's reuse the now unused first param of the function to pass the return label
+                    //     let is_hostcall = is_hostcall(&cur, inst);
+                    //     if is_hostcall {
+                    //         let ret_label_inst = cur.ins().get_pinned_reg(isa.pointer_type());
+                    //         let call_args = cur.func.dfg.inst_args_mut(inst);
+                    //         std::mem::replace(&mut call_args[0], ret_label_inst);
+                    //     } else {
+                    //         let ret_label_inst = cur.ins().iconst(types::I64, REPLACE_LABEL_2 as i64);
+                    //         let call_args = cur.func.dfg.inst_args_mut(inst);
+                    //         std::mem::replace(&mut call_args[0], ret_label_inst);
+                    //     }
+                    // }
                 },
+                // TODO: DISABLED FOR NOW
+                // Opcode::Load => {
+                //     // since we are replacing the first param with the CFI return label
+                //     // we need to replace all prior uses of the first param
+                //     // in particular some loads use this instead of the pinned reg
+                //     let load_args = cur.func.dfg.inst_args(inst);
+                //     if load_args.len() != 1 {
+                //         return;
+                //     }
+                //     let arg = load_args[0];
+                //     // context arg
+                //     let value_num = arg.as_u32();
+                //     if value_num == 0
+                //     {
+                //         let _a = 1;
+                //         let heap_base = cur.ins().get_pinned_reg(isa.pointer_type());
+                //         let load_args_mut = cur.func.dfg.inst_args_mut(inst);
+                //         std::mem::replace(&mut load_args_mut[0], heap_base);
+                //     }
+                //     let _a = 1;
+                // }
                 Opcode::Return => {
                     let new_label = cur.ins().iconst(types::I64, RETURN_LABEL as i64);
                     cur.ins().conditionally_set_cfi_label(new_label);
@@ -225,7 +264,7 @@ pub fn do_cfi_set_correct_labels(func: &mut Function, isa: &dyn TargetIsa) {
             if opcode == Opcode::BrzCfi || opcode == Opcode::BrnzCfi || opcode == Opcode::BrifCfi || opcode == Opcode::BrffCfi {
                 set_labels_for_condbranch(&mut cur, inst);
             } else if opcode == Opcode::Jump || opcode == Opcode::Fallthrough || opcode == Opcode::Call || opcode == Opcode::CallIndirect {
-                set_labels_for_uncondbranch(&mut cur, inst);
+                set_labels_for_uncondbranch(isa, &mut cur, inst);
             } else if opcode.is_branch() {
                 panic!("Shouldn't see any conditional branch opcode here, they should all have been either handled in one of the above ifs or not exist during this pass. Found a {}", opcode);
             }
@@ -339,7 +378,7 @@ fn set_labels_for_condbranch(cur: &mut EncCursor, inst: Inst) {
 /// `inst` should be an unconditional branch or call instruction.
 ///
 /// This function preserves the cursor position.
-fn set_labels_for_uncondbranch(cur: &mut EncCursor, inst: Inst) {
+fn set_labels_for_uncondbranch(_isa: &dyn TargetIsa, cur: &mut EncCursor, inst: Inst) {
     let cfi_label_inst = get_previous_conditional_cfi_label_inst(cur);
     if cfi_label_inst.is_none() { return; }
     let cfi_label_inst = cfi_label_inst.unwrap();
@@ -368,6 +407,26 @@ fn set_labels_for_uncondbranch(cur: &mut EncCursor, inst: Inst) {
     };
 
     cur.func.dfg.replace(original_label0_inst).iconst(types::I64, br_block_label as i64);
+
+    // TODO: DISABLED FOR NOW
+    // // For calls, we also need to pass in the return label as the first parameter
+    // if opcode == Opcode::Call  { // || opcode == Opcode::CallIndirect
+    //     let is_hostcall = is_hostcall(&cur, inst);
+
+    //     if !is_hostcall {
+    //         let post_call_label = cur.func.cfi_inst_nums[inst].unwrap();
+    //         // normally first param to a function is the sbx heap
+    //         // but we always use pinned heap regs when using cfi
+    //         // so let's reuse the now unused first param of the function to pass the return label
+    //         let call_args = cur.func.dfg.inst_args(inst);
+    //         let call_label_source = cur.func.dfg.value_def(*call_args.first().unwrap());
+    //         let call_label_inst = match call_label_source {
+    //             ValueDef::Result(inst, _) => inst,
+    //             _ => panic!("Unexpected label source for CFI"),
+    //         };
+    //         cur.func.dfg.replace(call_label_inst).iconst(types::I64, post_call_label as i64);
+    //     }
+    // }
 }
 
 /// Get the first previous inst with opcode == Opcode::CondbrGetNewCfiLabel
