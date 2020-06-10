@@ -2515,7 +2515,7 @@ pub(crate) fn define<'shared>(
                 OperandConstraint::FixedReg(reg_rflags),
                 OperandConstraint::RegClass(gpr),
             ])
-            .branch_range((1, 8))
+            .branch_range((1 + CMOV_SIZE, 8))
             .clobbers_flags(false)
             .emit(
                 r#"
@@ -2563,7 +2563,7 @@ pub(crate) fn define<'shared>(
                 OperandConstraint::FixedReg(reg_rflags),
                 OperandConstraint::RegClass(gpr),
             ])
-            .branch_range((4, 32))
+            .branch_range((4 + CMOV_SIZE, 32))
             .clobbers_flags(false)
             .emit(
                 r#"
@@ -2614,7 +2614,7 @@ pub(crate) fn define<'shared>(
                 OperandConstraint::FixedReg(reg_rflags),
                 OperandConstraint::RegClass(gpr),
             ])
-            .branch_range((1, 8))
+            .branch_range((1 + CMOV_SIZE, 8))
             .clobbers_flags(false)
             .inst_predicate(supported_floatccs_predicate(
                 &supported_floatccs,
@@ -2672,7 +2672,7 @@ pub(crate) fn define<'shared>(
                 OperandConstraint::FixedReg(reg_rflags),
                 OperandConstraint::RegClass(gpr),
             ])
-            .branch_range((4, 32))
+            .branch_range((4 + CMOV_SIZE, 32))
             .clobbers_flags(false)
             .inst_predicate(supported_floatccs_predicate(
                 &supported_floatccs,
