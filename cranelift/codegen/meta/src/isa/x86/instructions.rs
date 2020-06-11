@@ -261,6 +261,15 @@ pub(crate) fn define(
         .operands_out(vec![y, rflags]),
     );
 
+    const CFI_LABEL_SIZE_BITS: u16 = 64; // if changing this, also change the size of `block_label_imm` below
+    let block_label = &TypeVar::new(
+        "block_label",
+        "A CFI block label",
+        TypeSetBuilder::new()
+            .ints(CFI_LABEL_SIZE_BITS..CFI_LABEL_SIZE_BITS)
+            .build(),
+    );
+    let cfi_label = &Operand::new("cfi_label", block_label);
     let block_label_imm = &Operand::new("i", &immediates.imm64)
         .with_doc( "An immediate representing the block label");
 
@@ -288,9 +297,9 @@ pub(crate) fn define(
     Following this instruction, the CFI label register (`r14`) will be
     zero if the check passed, and nonzero if it did not.
     "#,
-            &formats.unary_imm,
+            &formats.unary,
         )
-        .operands_in(vec![block_label_imm]),
+        .operands_in(vec![cfi_label]),
     );
 
     let uimm8 = &immediates.uimm8;

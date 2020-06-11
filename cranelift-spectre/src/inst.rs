@@ -88,7 +88,6 @@ pub fn get_reg_truncate_bytes(reg: u16) -> &'static [u8] {
 // sub r13, const
 // sub r14, const
 // sub r15, const
-
 pub fn get_sub_const_bytes(reg: u16, amt: u32) -> Vec<u8> {
     let mut bytes = match reg {
         R_RAX => vec![0x48, 0x2d, 0xba],
@@ -113,6 +112,22 @@ pub fn get_sub_const_bytes(reg: u16, amt: u32) -> Vec<u8> {
     let amt_bytes: [u8; 4] = unsafe { std::mem::transmute(amt.to_le()) };
     amt_bytes.iter().for_each(|b| bytes.push(*b));
     return bytes;
+}
+
+// sub destreg, srcreg
+// 64-bit subtraction
+pub fn get_sub_bytes(destreg: u16, srcreg: u16) -> Vec<u8> {
+    let rexw = 0x48;
+    let reg1_bit = if srcreg > R_RDI { 0b100 } else { 0 };
+    let reg2_bit = if destreg > R_RDI { 0b001 } else { 0 };
+    let rexw = rexw | reg1_bit | reg2_bit;
+
+    let modrm_mod: u8 = 0b11000000;
+    let modrm_reg: u8 = get_reg_bits(srcreg);
+    let modrm_rm: u8 = get_reg_bits(destreg);
+    let modrm = modrm_mod | (modrm_reg << 3) | modrm_rm;
+
+    vec![ rexw, 0x29, modrm ]
 }
 
 // test rax, rax
@@ -329,10 +344,10 @@ fn get_cmov(reg1: u16, reg2: u16, opbyte: u8) -> Vec<u8> {
     let byte2: u8 = 0x0f;
     let byte3: u8 = opbyte;
 
-    let reg_chooser: u8 = 0b11000000;
-    let reg1_choose: u8 = get_reg_bits(reg1);
-    let reg2_choose: u8 = get_reg_bits(reg2);
-    let byte4 = reg_chooser | (reg1_choose << 3) | reg2_choose;
+    let modrm_mod: u8 = 0b11000000;
+    let modrm_reg: u8 = get_reg_bits(reg1);
+    let modrm_rm: u8 = get_reg_bits(reg2);
+    let byte4 = modrm_mod | (modrm_reg << 3) | modrm_rm;
 
     return vec![byte1, byte2, byte3, byte4];
 }

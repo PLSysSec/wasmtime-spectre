@@ -2959,9 +2959,10 @@ pub(crate) fn define<'shared>(
     recipes.add_recipe(
         EncodingRecipeBuilder::new(
             "cfi_check",
-            &formats.unary_imm,
-            if DEBUG_MODE { 4+2+1+6+7+3+4 } else { 7+3+4 },
+            &formats.unary,
+            if DEBUG_MODE { 4+2+1+6+3+3+4 } else { 3+3+4 },
         )
+        .operands_in(vec![gpr])
         .clobbers_flags(true)
         .emit(
             r#"
@@ -2982,10 +2983,9 @@ pub(crate) fn define<'shared>(
                     for &byte in &[0x41, 0xbe, 0x0a, 0x00, 0x00, 0x00] { sink.put1(byte); }
                 }
 
-                use cranelift_spectre::inst::{get_sub_const_bytes, get_test_bytes, get_cmovnz};
+                use cranelift_spectre::inst::{get_sub_bytes, get_test_bytes, get_cmovnz};
                 use cranelift_spectre::inst::{R_R14, R_R15};
-                let imm: i64 = imm.into();
-                for byte in get_sub_const_bytes(R_R14, imm as u32) { sink.put1(byte); }
+                for byte in get_sub_bytes(R_R14, in_reg0) { sink.put1(byte); }
                 for &byte in get_test_bytes(R_R14) { sink.put1(byte); }
                 // we now always zero the heap in event of misprediction,
                 // to simplify chaining / avoid the control flow laundering problem

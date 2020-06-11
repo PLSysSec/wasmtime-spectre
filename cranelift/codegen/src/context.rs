@@ -226,6 +226,13 @@ impl Context {
                     self.condbr_cfi(isa)?;
                     self.br_cfi(isa)?;
                     self.indirectbr_cfi(isa)?;
+
+                    // add_checks also needs some temps
+                    // Note that these passes very much assume that this is the final
+                    // CFG and set of blocks
+                    self.cfi_number_allocate(isa, cfi_start_num)?;
+                    self.cfi_add_checks(isa)?;
+                    self.cfi_set_correct_labels(isa)?;
                 }
                 _ => {}
             }
@@ -236,12 +243,6 @@ impl Context {
             }
             if opt_level == OptLevel::SpeedAndSize {
                 self.shrink_instructions(isa)?;
-            }
-
-            if pht_mitigation == SpectrePHTMitigation::CFI {
-                self.cfi_number_allocate(isa, cfi_start_num)?;
-                self.cfi_add_checks(isa)?;
-                self.cfi_set_correct_labels(isa)?;
             }
 
             let result = self.relax_branches(isa, can_be_indirectly_called);

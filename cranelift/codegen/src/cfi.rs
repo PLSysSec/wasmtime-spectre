@@ -388,10 +388,7 @@ fn add_cfi_block_check(cur: &mut EncCursor, is_first_block: bool) {
         if opcode.can_load() || opcode.can_store() {
             break;
         }
-        if opcode.is_branch() || opcode.is_indirect_branch() {
-            break;
-        }
-        if opcode.is_call() {
+        if opcode.is_branch() || opcode.is_indirect_branch() || opcode.is_call() {
             break;
         }
         if opcode.writes_cpu_flags() {
@@ -413,7 +410,8 @@ fn add_cfi_block_check(cur: &mut EncCursor, is_first_block: bool) {
         cur.next_inst();
     }
 
-    cur.ins().cfi_check_that_label_is_equal_to(label as i64);
+    let label = cur.ins().iconst(types::I64, label as i64);
+    cur.ins().cfi_check_that_label_is_equal_to(label);
 }
 
 /// Does the current instruction need a CFI "top-of-block" check instruction despite
@@ -448,7 +446,8 @@ fn add_cfi_inst_check(cur: &mut EncCursor, inst: Inst) {
     debug_assert!(needs_cfi_inst_check(cur, inst));
     let label = cur.func.cfi_inst_nums[inst].unwrap();
     cur.next_inst(); // we want to insert _after_ the call or condbr
-    cur.ins().cfi_check_that_label_is_equal_to(label as i64);
+    let label = cur.ins().iconst(types::I64, label as i64);
+    cur.ins().cfi_check_that_label_is_equal_to(label);
     cur.set_position(saved_position);
 }
 
