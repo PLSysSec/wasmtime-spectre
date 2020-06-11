@@ -272,14 +272,14 @@ pub(crate) fn define(
     let cfi_label = &Operand::new("cfi_label", block_label);
 
     let imm64 = &immediates.imm64;
-    let block_label_imm = &Operand::new("i", imm64,).with_doc( "An immediate representing the block label");
+    let block_label_imm = &Operand::new("i", imm64).with_doc( "An immediate representing the block label");
 
     ig.push(
         Inst::new(
             "condbr_get_new_cfi_label",
             r#"
-    This sets a temp register (`r14`) to the label given as an
-    argument to this instruction.
+    This simply outputs the label given as argument. It is equivalent to (one
+    case of) `iconst`, under a different name.
     "#,
             &formats.unary_imm,
         )
@@ -289,10 +289,27 @@ pub(crate) fn define(
 
     ig.push(
         Inst::new(
-            "conditionally_set_cfi_label",
+            "set_cfi_label",
             r#"
     This sets the CFI label register (`r14`) to the label given as an
     argument to this instruction.
+    "#,
+            &formats.unary_imm,
+        )
+        .operands_in(vec![block_label_imm]),
+    );
+
+    ig.push(
+        Inst::new(
+            "cfi_check_that_label_is_equal_to",
+            r#"
+    This inserts the proper checks that the CFI label register (`r14`)
+    is equal to the given value.
+
+    If it is not equal, it zeroes the heap and stack pointers via cmov.
+
+    Following this instruction, the CFI label register (`r14`) will be
+    zero if the check passed, and nonzero if it did not.
     "#,
             &formats.unary_imm,
         )

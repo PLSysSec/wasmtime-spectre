@@ -778,7 +778,7 @@ fn insert_common_prologue(
             if get_spectre_pht_mitigation() == SpectrePHTMitigation::CFI {
                 let saved_position = pos.position();
                 pos.goto_inst(call);
-                pos.ins().conditionally_set_cfi_label(crate::cfi::PROBE_STACK_LABEL as i64);
+                pos.ins().set_cfi_label(crate::cfi::PROBE_STACK_LABEL as i64);
                 pos.set_position(saved_position);
             }
 

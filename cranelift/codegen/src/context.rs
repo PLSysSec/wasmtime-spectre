@@ -240,7 +240,7 @@ impl Context {
 
             if pht_mitigation == SpectrePHTMitigation::CFI {
                 self.cfi_number_allocate(isa, cfi_start_num)?;
-                self.cfi_add_checks(isa, can_be_indirectly_called)?;
+                self.cfi_add_checks(isa)?;
                 self.cfi_set_correct_labels(isa)?;
             }
 
@@ -516,8 +516,8 @@ impl Context {
     }
 
     /// Actually add CFI checks
-    pub fn cfi_add_checks(&mut self, isa: &dyn TargetIsa, can_be_indirectly_called: bool) -> CodegenResult<()> {
-        do_cfi_add_checks(&mut self.func, isa, can_be_indirectly_called);
+    pub fn cfi_add_checks(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
+        do_cfi_add_checks(&mut self.func, isa);
         self.verify_if(isa)
     }
 

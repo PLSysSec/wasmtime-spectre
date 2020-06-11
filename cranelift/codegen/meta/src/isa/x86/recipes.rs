@@ -2957,7 +2957,7 @@ pub(crate) fn define<'shared>(
     recipes.add_template(
         Template::new(
             EncodingRecipeBuilder::new(
-                "conditionally_set_cfi_label",
+                "set_cfi_label",
                 &formats.unary_imm,
                 8,
             )
@@ -2975,7 +2975,47 @@ pub(crate) fn define<'shared>(
         )
     );
 
-    // Arithematic with flag I/O.
+    use cranelift_spectre::inst::DEBUG_MODE;
+    recipes.add_recipe(
+        EncodingRecipeBuilder::new(
+            "cfi_check",
+            &formats.unary_imm,
+            if DEBUG_MODE { 4+2+1+6+7+3+4+4 } else { 7+3+4+4 },
+        )
+        .clobbers_flags(true)
+        .emit(
+            r#"
+                use cranelift_spectre::inst::{DEBUG_MODE, IGNORE_TRAPS_IN, get_curr_func};
+                if DEBUG_MODE {
+                    // Debug
+                    //  49 83 fe 0a             cmp    $0xa,%r14
+                    //  74 07                   je     179 <square.L1>
+                    //  cc or 90                int3 or nop
+                    //  41 be 0a 00 00 00       mov    $0xa,%r14d
+                    for &byte in &[0x49, 0x83, 0xfe, 0x0a] { sink.put1(byte); }
+                    for &byte in &[0x74, 0x07] { sink.put1(byte); }
+                    if get_curr_func().starts_with(IGNORE_TRAPS_IN) {
+                        sink.put1(0x90);
+                    } else {
+                        sink.put1(0xcc);
+                    }
+                    for &byte in &[0x41, 0xbe, 0x0a, 0x00, 0x00, 0x00] { sink.put1(byte); }
+                }
+
+                use cranelift_spectre::inst::{get_sub_const_bytes, get_test_bytes, get_cmovnz};
+                use cranelift_spectre::inst::{R_R14, R_R15, R_RSP};
+                let imm: i64 = imm.into();
+                for byte in get_sub_const_bytes(R_R14, imm as u32) { sink.put1(byte); }
+                for &byte in get_test_bytes(R_R14) { sink.put1(byte); }
+                // we now always zero the stack and heap in event of misprediction,
+                // to simplify chaining / avoid the control flow laundering problem
+                for byte in get_cmovnz(R_R15, R_R14) { sink.put1(byte); }
+                for byte in get_cmovnz(R_RSP, R_R14) { sink.put1(byte); }
+            "#,
+        ),
+    );
+
+    // Arithmetic with flag I/O.
 
     // XX /r, MR form. Add two GPR registers and set carry flag.
     recipes.add_template(

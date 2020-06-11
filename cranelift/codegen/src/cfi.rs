@@ -60,7 +60,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                         set_prev_valid_insert_point(&mut cur);
                     }
 
-                    cur.ins().conditionally_set_cfi_label(REPLACE_LABEL_1 as i64);
+                    cur.ins().set_cfi_label(REPLACE_LABEL_1 as i64);
                     let new_label = cur.ins().condbr_get_new_cfi_label(REPLACE_LABEL_2 as i64);
 
                     let (dest, varargs): (Block, Vec<Value>) = {
@@ -138,7 +138,7 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                         let _a = 1;
                     } else {
                         // we need to handle cfi label ourselves
-                        cur.ins().conditionally_set_cfi_label(REPLACE_LABEL_1 as i64);
+                        cur.ins().set_cfi_label(REPLACE_LABEL_1 as i64);
                     }
 
                     // TODO: DISABLED FOR NOW
@@ -181,7 +181,7 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                 //     let _a = 1;
                 // }
                 Opcode::Return => {
-                    cur.ins().conditionally_set_cfi_label(RETURN_LABEL as i64);
+                    cur.ins().set_cfi_label(RETURN_LABEL as i64);
                 }
                 _ => {}
             }
@@ -197,7 +197,7 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
 pub fn do_indirectbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur = EncCursor::new(func, isa);
 
-    if cranelift_spectre::inst::DEBUG_MODE && should_print() {
+    if should_print() {
         println!("Function at top of do_indirectbr_cfi:\n{}", cur.func.display(isa));
     }
     if cranelift_spectre::inst::DEBUG_MODE && !should_instrument() {
@@ -286,7 +286,7 @@ pub fn do_cfi_number_allocate(func: &mut Function, isa: &dyn TargetIsa, cfi_star
     }
 }
 
-pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indirectly_called: bool) {
+pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur = EncCursor::new(func, isa);
 
     if should_print() {
@@ -298,9 +298,8 @@ pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indire
 
     let mut divert = RegDiversions::new();
 
-    let mut first_inst_in_func = true;
+    let mut first_block_in_func = true;
     let mut first_inst_in_block;
-    let encinfo = isa.encoding_info();
 
     while let Some(block) = cur.next_block() {
         divert.at_block(&cur.func.entry_diversions, block);
@@ -308,21 +307,18 @@ pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indire
         first_inst_in_block = true;
 
         while let Some(inst) = cur.next_inst() {
-            let _opcode = cur.func.dfg[inst].opcode();
-            let _format = _opcode.format();
-            let _enc =  encinfo.display(cur.func.encodings[inst]);
-            if first_inst_in_func {
-                add_cfi_func_checks(&mut cur, can_be_indirectly_called);
-            }
             if first_inst_in_block {
-                add_cfi_block_checks(&mut cur, first_inst_in_func);
+                add_cfi_block_check(&mut cur, first_block_in_func);
             }
 
-            add_cfi_inst_checks(&mut cur, &inst);
+            if needs_cfi_inst_check(&mut cur, inst) {
+                add_cfi_inst_check(&mut cur, inst);
+            }
 
             first_inst_in_block = false;
-            first_inst_in_func = false;
         }
+
+        first_block_in_func = false;
     }
 
     if should_print() {
@@ -332,7 +328,7 @@ pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indire
 
 /// Set the correct CFI labels for each branch, jump, call etc instruction
 /// (see notes on `set_labels_for_condbranch()` and `set_labels_for_uncondbranch()`)
-pub fn do_cfi_set_correct_labels(func: &mut Function, isa: &dyn TargetIsa) {
+pub fn do_cfi_set_correct_labels(_func: &mut Function, _isa: &dyn TargetIsa) {
     // TODO: DISABLED FOR NOW
     /*
     let mut cur = EncCursor::new(func, isa);
@@ -360,51 +356,100 @@ pub fn do_cfi_set_correct_labels(func: &mut Function, isa: &dyn TargetIsa) {
     */
 }
 
-fn add_cfi_func_checks(cur: &mut EncCursor, can_be_indirectly_called: bool) {
-    if can_be_indirectly_called {
-        let block = cur.current_block().unwrap();
-        // we now always zero the stack and heap in event of misprediction, to simplify chaining / avoid the control flow laundering problem
-        //let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
-        let label = cur.func.cfi_block_nums[block].unwrap();
-        let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, true, true);
-        cur.func.block_guards[block].append(&mut bytes);
-    }
-}
-
-fn add_cfi_block_checks(cur: &mut EncCursor, is_first_block: bool) {
-    let saved_cursor_position = cur.position();
-
+/// Add CFI top-of-block check instruction to the block.
+///
+/// Assumes that the cursor is current pointing at the first instruction in the
+/// block.
+///
+/// The "top-of-block" check may not actually be placed at the very top of the
+/// block; see comments inside this function.
+///
+/// This function MAY NOT preserve the cursor position; upon return, the cursor
+/// will point to the instruction after the newly-inserted CFI check.
+fn add_cfi_block_check(cur: &mut EncCursor, is_first_block: bool) {
     let block = cur.current_block().unwrap();
-    // Add the cfi check for each block
-    if cur.func.block_guards[block].len() == 0 {
-        // we now always zero the stack and heap in event of misprediction, to simplify chaining / avoid the control flow laundering problem
-        //let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
-        let label = if is_first_block { FIRST_BLOCK_LABEL } else { cur.func.cfi_block_nums[block].unwrap() };
-        let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, true, true);
-        cur.func.block_guards[block].append(&mut bytes);
+    let label = if is_first_block { FIRST_BLOCK_LABEL } else { cur.func.cfi_block_nums[block].unwrap() };
+
+    // Our CFI check will clobber flags.
+    // Sometimes we're not allowed to clobber flags at the top of a block.
+    // It's OK to delay the CFI check until after an instruction that may need
+    // the flags, as long as we don't move the CFI check past:
+    //   - an instruction that could read or write memory
+    //   - an instruction that could branch or call
+    //   - an instruction that _writes_ flags (as then we would clobber them)
+    //   - a `SetCfiLabel` instruction
+    //   - an instruction that needs its own CFI check
+    //
+    // The current implementation here simply delays the CFI check as long as possible
+    // given the above constraints.
+    loop {
+        let inst = cur.current_inst().expect("Reached the end of the block without finding any branch or jump instruction?");
+        let opcode = cur.func.dfg[inst].opcode();
+        if opcode.can_load() || opcode.can_store() {
+            break;
+        }
+        if opcode.is_branch() || opcode.is_indirect_branch() {
+            break;
+        }
+        if opcode.is_call() {
+            break;
+        }
+        if opcode.writes_cpu_flags() {
+            break;
+        }
+        if opcode == Opcode::SetCfiLabel {
+            break;
+        }
+        if needs_cfi_inst_check(cur, inst) {
+            break;
+        }
+
+        // Additionally, if it's an unconditional trap, we do the CFI check before the trap
+        if opcode == Opcode::Trap {
+            break;
+        }
+
+        // safe to delay the CFI check past this instruction
+        cur.next_inst();
     }
 
-    cur.set_position(saved_cursor_position);
+    cur.ins().cfi_check_that_label_is_equal_to(label as i64);
 }
 
-fn add_cfi_inst_checks(cur: &mut EncCursor, inst: &Inst) {
-    let opcode = cur.func.dfg[*inst].opcode();
-    let _format = opcode.format();
-
-    // Here we add "top-of-block" CFI checks for "blocks" which are only parts of Cranelift blocks
-    if !opcode.is_terminator()
-        && (opcode.is_call() || is_condbr_followed_by_non_jump_or_fallthrough(cur, opcode))
-    {
-        // we now always zero the stack and heap in event of misprediction, to simplify chaining / avoid the control flow laundering problem
-        /*
-        cur.next_inst();
-        let (zero_heap, zero_stack) = is_heap_or_stack_op_before_next_ctrl_flow(isa, cur, divert);
-        cur.prev_inst();
-        */
-        let label = cur.func.cfi_inst_nums[*inst].unwrap();
-        let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, true, true);
-        cur.func.post_inst_guards[*inst].append(&mut bytes);
+/// Does the current instruction need a CFI "top-of-block" check instruction despite
+/// being in the middle of the block?
+///
+/// This is true for call instructions and some conditional branch instructions;
+/// it's obviously not true for any terminators.
+///
+/// This function preserves the cursor position.
+fn needs_cfi_inst_check(cur: &mut EncCursor, inst: Inst) -> bool {
+    let opcode = cur.func.dfg[inst].opcode();
+    if opcode.is_terminator() {
+        false
+    } else if opcode.is_call() {
+        true
+    } else if opcode.is_branch() || opcode.is_indirect_branch() {
+        is_followed_by_non_jump_or_fallthrough(cur)
+    } else {
+        false
     }
+}
+
+/// Add CFI "top-of-block" check instruction for "blocks" which are only parts of
+/// Cranelift blocks.
+///
+/// This function should only be called on an instruction which needs it,
+/// according to `needs_cfi_inst_check()`.
+///
+/// This function preserves the cursor position.
+fn add_cfi_inst_check(cur: &mut EncCursor, inst: Inst) {
+    let saved_position = cur.position();
+    debug_assert!(needs_cfi_inst_check(cur, inst));
+    let label = cur.func.cfi_inst_nums[inst].unwrap();
+    cur.next_inst(); // we want to insert _after_ the call or condbr
+    cur.ins().cfi_check_that_label_is_equal_to(label as i64);
+    cur.set_position(saved_position);
 }
 
 /*
@@ -489,7 +534,7 @@ fn set_labels_for_uncondbranch(_isa: &dyn TargetIsa, cur: &mut EncCursor, inst: 
     };
     let args = cur.func.dfg.inst_args(cfi_label_inst);
 
-    // cfi_label_inst may be CondbrGetNewCfiLabel or ConditionallySetCfiLabel
+    // cfi_label_inst may be CondbrGetNewCfiLabel or SetCfiLabel
     // either way the last arg is the fallthrough destination
     let original_label0_source = cur.func.dfg.value_def(*args.last().unwrap());
     let original_label0_inst = match original_label0_source {
@@ -562,7 +607,7 @@ fn get_previous_cfi_label_inst(cur: &mut EncCursor) -> Option<Inst> {
 */
 
 /*
-/// Get previous inst with opcode == ConditionallySetCfiLabel
+/// Get previous inst with opcode == SetCfiLabel
 /// If the previous instruction is a conditional branch this won't exist
 ///
 /// This function preserves the cursor position.
@@ -575,7 +620,7 @@ fn get_previous_conditional_cfi_label_inst(cur: &mut EncCursor) -> Option<Inst> 
             None => break None,
             Some(cur_inst) => {
                 match cur.func.dfg[cur_inst].opcode() {
-                    Opcode::ConditionallySetCfiLabel => {
+                    Opcode::SetCfiLabel => {
                         break Some(cur_inst);
                     }
                     o if o.is_branch() => {
@@ -608,10 +653,12 @@ fn get_prev_inst(cur: &mut impl Cursor) -> Option<Inst> {
     inst
 }
 
+/// "Peeks" the opcode of the next instruction without actually moving the cursor
 fn get_next_opcode(cur: &mut EncCursor) -> Option<Opcode> {
     get_next_inst(cur).map(|inst| cur.func.dfg[inst].opcode())
 }
 
+/// "Peeks" the opcode of the prev instruction without actually moving the cursor
 fn get_prev_opcode(cur: &mut EncCursor) -> Option<Opcode> {
     get_prev_inst(cur).map(|inst| cur.func.dfg[inst].opcode())
 }
@@ -734,14 +781,11 @@ fn is_heap_or_stack_op_before_next_ctrl_flow(
     return (found_heap_op, found_stack_op);
 }
 
-fn is_condbr_followed_by_non_jump_or_fallthrough(cur: &mut EncCursor, opcode: Opcode) -> bool {
-    if opcode.is_branch() || opcode.is_indirect_branch() {
-        match get_next_opcode(cur) {
-            Some(Opcode::Jump) | Some(Opcode::Fallthrough) => false,
-            None => panic!("Condbr is last instruction in block, which shouldn't happen"),
-            _ => true,
-        }
-    } else {
-        false
+/// This function preserves the cursor position.
+fn is_followed_by_non_jump_or_fallthrough(cur: &mut EncCursor) -> bool {
+    match get_next_opcode(cur) {
+        Some(Opcode::Jump) | Some(Opcode::Fallthrough) => false,
+        None => panic!("is_followed_by_non_jump_or_fallthrough: this is the last instruction in block"), // caller should not call this with a terminator
+        _ => true,
     }
 }
