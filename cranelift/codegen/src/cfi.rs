@@ -377,7 +377,7 @@ fn add_cfi_block_check(cur: &mut EncCursor, is_first_block: bool) {
     //   - an instruction that could read or write memory
     //   - an instruction that could branch or call
     //   - an instruction that _writes_ flags (as then we would clobber them)
-    //   - a `SetCfiLabel` instruction
+    //   - an instruction that writes r14: `SetCfiLabel` or `JumpTableEntryCfi`
     //   - an instruction that needs its own CFI check
     //
     // The current implementation here simply delays the CFI check as long as possible
@@ -397,7 +397,7 @@ fn add_cfi_block_check(cur: &mut EncCursor, is_first_block: bool) {
         if opcode.writes_cpu_flags() {
             break;
         }
-        if opcode == Opcode::SetCfiLabel {
+        if opcode == Opcode::SetCfiLabel || opcode == Opcode::JumpTableEntryCfi {
             break;
         }
         if needs_cfi_inst_check(cur, inst) {
