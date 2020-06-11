@@ -496,7 +496,7 @@ impl<'a> Verifier<'a> {
 
     fn verify_jump_tables(&self, errors: &mut VerifierErrors) -> VerifierStepResult<()> {
         for (jt, jt_data) in &self.func.jump_tables {
-            for &block in jt_data.iter() {
+            for block in jt_data.iter_blocks() {
                 self.verify_block(jt, block, errors)?;
             }
         }
@@ -1356,8 +1356,8 @@ impl<'a> Verifier<'a> {
                         ));
                     }
                 }
-                for block in self.func.jump_tables[table].iter() {
-                    let arg_count = self.func.dfg.num_block_params(*block);
+                for block in self.func.jump_tables[table].iter_blocks() {
+                    let arg_count = self.func.dfg.num_block_params(block);
                     if arg_count != 0 {
                         return errors.nonfatal((
                             inst,

@@ -14,7 +14,7 @@ use crate::binemit::{
     TrapSink,
 };
 use crate::blade::do_blade;
-use crate::cfi::{do_br_cfi, do_cfi_add_checks, do_cfi_number_allocate, do_cfi_set_correct_labels, do_condbr_cfi};
+use crate::cfi::{do_br_cfi, do_cfi_add_checks, do_cfi_number_allocate, do_cfi_set_correct_labels, do_condbr_cfi, do_indirectbr_cfi};
 use crate::dce::do_dce;
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
@@ -225,6 +225,7 @@ impl Context {
                     // we're inserting
                     self.condbr_cfi(isa)?;
                     self.br_cfi(isa)?;
+                    self.indirectbr_cfi(isa)?;
                 }
                 _ => {}
             }
@@ -538,6 +539,15 @@ impl Context {
     /// Insert the appropriate CFI boilerplate before each unconditional jump
     pub fn br_cfi(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
         do_br_cfi(&mut self.func, isa);
+        // we recompute CFG and domtree in case they have been invalidated by the pass
+        self.compute_cfg();
+        self.compute_domtree();
+        self.verify_if(isa)
+    }
+
+    /// Insert the appropriate CFI boilerplate surrounding indirect jumps (jump tables)
+    pub fn indirectbr_cfi(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
+        do_indirectbr_cfi(&mut self.func, isa);
         // we recompute CFG and domtree in case they have been invalidated by the pass
         self.compute_cfg();
         self.compute_domtree();

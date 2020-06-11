@@ -1,6 +1,5 @@
 use crate::cursor::{Cursor, EncCursor};
 use crate::ir::{Block, Inst, InstBuilder, InstructionData, Value, ValueLoc};
-// use crate::ir::ValueDef;
 use crate::ir::function::Function;
 use crate::ir::instructions::{BranchInfo, Opcode};
 use crate::isa::{registers::RegUnit, TargetIsa};
@@ -38,6 +37,7 @@ fn should_instrument() -> bool {
     }
 }
 
+/// Insert the appropriate CFI boilerplate before each conditional branch
 pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
 
@@ -117,6 +117,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     }
 }
 
+/// Insert the appropriate CFI boilerplate before each unconditional jump
 pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
 
@@ -189,6 +190,52 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
 
     if should_print() {
         println!("Function at bottom of do_br_cfi:\n {}", cur.func.display(isa));
+    }
+}
+
+/// Insert the appropriate CFI boilerplate surrounding indirect jumps (jump tables)
+pub fn do_indirectbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
+    let mut cur = EncCursor::new(func, isa);
+
+    if cranelift_spectre::inst::DEBUG_MODE && should_print() {
+        println!("Function at top of do_indirectbr_cfi:\n{}", cur.func.display(isa));
+    }
+    if cranelift_spectre::inst::DEBUG_MODE && !should_instrument() {
+        return
+    }
+
+    while let Some(_block) = cur.next_block() {
+        while let Some(inst) = cur.next_inst() {
+            let opcode = cur.func.dfg[inst].opcode();
+            match opcode {
+                Opcode::BrTable => {
+                    panic!("This pass needs to run after BrTable has been legalized into smaller instructions");
+                }
+                Opcode::JumpTableEntry => {
+                    // replace with JumpTableEntryCFI
+                    let (args, imm, table) = match &cur.func.dfg[inst] {
+                        InstructionData::BranchTableEntry { args, imm, table, .. } => (args.to_vec(), *imm, *table),
+                        instdata => panic!("Expected a BranchTableEntry, got {:?}", instdata),
+                    };
+                    let result = cur.func.dfg.first_result(inst);
+                    cur.func.dfg.detach_results(inst);
+                    cur.remove_inst();
+                    let _ = cur.ins().jump_table_entry_cfi(args[0], args[1], imm, table);
+                    let new_inst = cur.built_inst();
+                    cur.func.dfg.clear_results(new_inst);
+                    cur.func.dfg.attach_result(new_inst, result);
+                }
+                Opcode::IndirectJumpTableBr => {
+                    // We don't actually need to do anything for this -- everything
+                    // was done in JumpTableEntryCFI
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if cranelift_spectre::inst::DEBUG_MODE && should_print() {
+        println!("Function at bottom of do_indirectbr_cfi:\n {}", cur.func.display(isa));
     }
 }
 
@@ -283,6 +330,36 @@ pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa, can_be_indire
     }
 }
 
+/// Set the correct CFI labels for each branch, jump, call etc instruction
+/// (see notes on `set_labels_for_condbranch()` and `set_labels_for_uncondbranch()`)
+pub fn do_cfi_set_correct_labels(func: &mut Function, isa: &dyn TargetIsa) {
+    // TODO: DISABLED FOR NOW
+    /*
+    let mut cur = EncCursor::new(func, isa);
+
+    if cranelift_spectre::inst::DEBUG_MODE && !should_instrument() {
+        return
+    }
+
+    while let Some(_block) = cur.next_block() {
+        while let Some(inst) = cur.next_inst() {
+            let opcode = cur.func.dfg[inst].opcode();
+            if opcode == Opcode::BrzCfi || opcode == Opcode::BrnzCfi || opcode == Opcode::BrifCfi || opcode == Opcode::BrffCfi {
+                set_labels_for_condbranch(&mut cur, inst);
+            } else if opcode == Opcode::Jump || opcode == Opcode::Fallthrough || opcode == Opcode::Call || opcode == Opcode::CallIndirect {
+                set_labels_for_uncondbranch(isa, &mut cur, inst);
+            } else if opcode == Opcode::IndirectJumpTableBr {
+                // these are handled all at once, below
+            } else if opcode.is_branch() {
+                panic!("Shouldn't see any branch opcode here, they should all have been either handled in one of the above ifs or not exist during this pass. Found a {}", opcode);
+            }
+        }
+    }
+
+    set_labels_for_jumptablebr(&mut cur.func);
+    */
+}
+
 fn add_cfi_func_checks(cur: &mut EncCursor, can_be_indirectly_called: bool) {
     if can_be_indirectly_called {
         let block = cur.current_block().unwrap();
@@ -328,30 +405,6 @@ fn add_cfi_inst_checks(cur: &mut EncCursor, inst: &Inst) {
         let mut bytes = cranelift_spectre::inst::get_cfi_check_bytes(label, true, true);
         cur.func.post_inst_guards[*inst].append(&mut bytes);
     }
-}
-
-/// Set the correct CFI labels for each branch, jump, call etc instruction
-/// (see notes on `set_labels_for_condbranch()` and `set_labels_for_uncondbranch()`)
-pub fn do_cfi_set_correct_labels(_func: &mut Function, _isa: &dyn TargetIsa) {
-    // TODO: DISABLED FOR NOW
-    // let mut cur = EncCursor::new(func, isa);
-
-    // if cranelift_spectre::inst::DEBUG_MODE && !should_instrument() {
-    //     return
-    // }
-
-    // while let Some(_block) = cur.next_block() {
-    //     while let Some(inst) = cur.next_inst() {
-    //         let opcode = cur.func.dfg[inst].opcode();
-    //         if opcode == Opcode::BrzCfi || opcode == Opcode::BrnzCfi || opcode == Opcode::BrifCfi || opcode == Opcode::BrffCfi {
-    //             set_labels_for_condbranch(&mut cur, inst);
-    //         } else if opcode == Opcode::Jump || opcode == Opcode::Fallthrough || opcode == Opcode::Call || opcode == Opcode::CallIndirect {
-    //             set_labels_for_uncondbranch(isa, &mut cur, inst);
-    //         } else if opcode.is_branch() {
-    //             panic!("Shouldn't see any conditional branch opcode here, they should all have been either handled in one of the above ifs or not exist during this pass. Found a {}", opcode);
-    //         }
-    //     }
-    // }
 }
 
 // /// Put in the correct real CFI numbers prior to conditional branch, replacing
@@ -516,6 +569,71 @@ pub fn do_cfi_set_correct_labels(_func: &mut Function, _isa: &dyn TargetIsa) {
 //     cur.set_position(saved_cursor_position);
 //     return found;
 // }
+
+/// Put in the correct real CFI numbers for jump tables.
+fn set_labels_for_jumptablebr(func: &mut Function) {
+    // TODO: for now we just ensure that the jump table entries all contain constant FIXED_LABEL
+    for (jt, jtdata) in func.jump_tables.iter() {
+        for &(block, label) in jtdata.iter() {
+            if label != (FIXED_LABEL as u32) {
+                panic!("Incorrect jump table entry label: found label {} for block {} in jump table {:?}", label, block, jt);
+            }
+        }
+    }
+}
+
+/// Get the first previous inst with opcode == Opcode::CondbrGetNewCfiLabel
+///
+/// This function preserves the cursor position.
+fn get_previous_cfi_label_inst(cur: &mut EncCursor) -> Option<Inst> {
+    // this should be in the same block, so only iterate in this block
+    let saved_cursor_position = cur.position();
+
+    let found = loop {
+        match cur.current_inst() {
+            None => break None,
+            Some(cur_inst) => {
+                let opcode = cur.func.dfg[cur_inst].opcode();
+                if opcode ==  Opcode::CondbrGetNewCfiLabel {
+                    break Some(cur_inst);
+                }
+            }
+        }
+        cur.prev_inst();
+    };
+
+    cur.set_position(saved_cursor_position);
+    return found;
+}
+
+/// Get previous inst with opcode == ConditionallySetCfiLabel
+/// If the previous instruction is a conditional branch this won't exist
+///
+/// This function preserves the cursor position.
+fn get_previous_conditional_cfi_label_inst(cur: &mut EncCursor) -> Option<Inst> {
+    let saved_cursor_position = cur.position();
+
+    let found = loop {
+        cur.prev_inst();
+        match cur.current_inst() {
+            None => break None,
+            Some(cur_inst) => {
+                match cur.func.dfg[cur_inst].opcode() {
+                    Opcode::ConditionallySetCfiLabel => {
+                        break Some(cur_inst);
+                    }
+                    o if o.is_branch() => {
+                        break get_previous_cfi_label_inst(cur);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    };
+
+    cur.set_position(saved_cursor_position);
+    return found;
+}
 
 /// "Peeks" the next instruction without actually moving the cursor
 fn get_next_inst(cur: &mut impl Cursor) -> Option<Inst> {

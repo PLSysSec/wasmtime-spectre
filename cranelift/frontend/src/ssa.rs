@@ -633,7 +633,7 @@ impl SSABuilder {
                     }
                 }
 
-                for old_dest in func.jump_tables[jt].as_mut_slice() {
+                for old_dest in func.jump_tables[jt].iter_mut_blocks() {
                     if *old_dest == dest_block {
                         *old_dest = middle_block;
                     }

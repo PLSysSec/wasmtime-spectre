@@ -741,8 +741,8 @@ impl RedundantReloadRemover {
                     }
                     BranchInfo::Table(jt, default) => {
                         func.jump_tables[jt]
-                            .iter()
-                            .for_each(|dst| self.processing_stack_maybe_push(*dst));
+                            .iter_blocks()
+                            .for_each(|dst| self.processing_stack_maybe_push(dst));
                         if let Some(dst) = default {
                             self.processing_stack_maybe_push(dst);
                         }

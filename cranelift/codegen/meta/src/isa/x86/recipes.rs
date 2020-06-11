@@ -2741,6 +2741,36 @@ pub(crate) fn define<'shared>(
             ),
     );
 
+    recipes.add_template_recipe(
+        EncodingRecipeBuilder::new("jt_entry_cfi", &formats.branch_table_entry, 2+5)
+            .operands_in(vec![gpr, gpr])
+            .operands_out(vec![gpr])
+            .clobbers_flags(false)
+            .inst_predicate(valid_scale(&*formats.branch_table_entry))
+            .compute_size("size_plus_maybe_offset_for_inreg_1")
+            .emit(
+                r#"
+                    use cranelift_spectre::inst::R_R14;
+                    // get the label into r14 (setting r14 to that label)
+                    {{PUT_OP}}(bits, rex3(in_reg1, R_R14, in_reg0), sink);
+                    modrm_sib_disp8(R_R14, sink);
+                    sib(imm.trailing_zeros() as u8, in_reg0, in_reg1, sink);
+                    sink.put1(4);  // extra displacement to get label field
+
+                    // now the actual encoding: get the block address and output it
+                    {{PUT_OP}}(bits, rex3(in_reg1, out_reg0, in_reg0), sink);
+                    if needs_offset(in_reg1) {
+                        modrm_sib_disp8(out_reg0, sink);
+                        sib(imm.trailing_zeros() as u8, in_reg0, in_reg1, sink);
+                        sink.put1(0);
+                    } else {
+                        modrm_sib(out_reg0, sink);
+                        sib(imm.trailing_zeros() as u8, in_reg0, in_reg1, sink);
+                    }
+                "#,
+            ),
+    );
+
     recipes.add_template_inferred(
         EncodingRecipeBuilder::new("vconst", &formats.unary_const, 5)
             .operands_out(vec![fpr])

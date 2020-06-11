@@ -216,9 +216,10 @@ where
     // Output jump tables.
     for (jt, jt_data) in func.jump_tables.iter() {
         let jt_offset = func.jt_offsets[jt];
-        for block in jt_data.iter() {
-            let rel_offset: i32 = func.offsets[*block] as i32 - jt_offset as i32;
-            sink.put4(rel_offset as u32)
+        for &(block, label) in jt_data.iter() {
+            let rel_offset: i32 = func.offsets[block] as i32 - jt_offset as i32;
+            sink.put4(rel_offset as u32);
+            sink.put4(label);
         }
     }
 

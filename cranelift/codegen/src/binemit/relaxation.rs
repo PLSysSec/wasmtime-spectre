@@ -45,7 +45,7 @@ use std::vec::Vec;
 use crate::ir::{Ebb, Inst, Value, ValueList};
 
 use cranelift_spectre::settings::{
-    get_spectre_mitigation, SpectreMitigation,
+    get_spectre_mitigation, get_spectre_pht_mitigation, SpectreMitigation, SpectrePHTMitigation,
 };
 
 fn spectre_resistance_on_func(
@@ -314,8 +314,14 @@ pub fn relax_branches(
 
     for (jt, jt_data) in func.jump_tables.iter() {
         func.jt_offsets[jt] = offset;
+        let table_entry_size_bytes = if get_spectre_pht_mitigation() == SpectrePHTMitigation::CFI {
+            4 + 4 // 4 for the offset, 4 for the CFI label
+        } else {
+            4
+        };
         // TODO: this should be computed based on the min size needed to hold the furthest branch.
-        offset += jt_data.len() as u32 * 4;
+        offset += u32::try_from(jt_data.len() * table_entry_size_bytes)
+            .expect("Jump table offset overflowed a u32");
     }
 
     let jumptables_size = offset - jumptables;
