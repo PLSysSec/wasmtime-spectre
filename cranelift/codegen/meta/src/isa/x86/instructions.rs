@@ -283,7 +283,7 @@ pub(crate) fn define(
     This inserts the proper checks that the CFI label register (`r14`)
     is equal to the given value.
 
-    If it is not equal, it zeroes the heap and stack pointers via cmov.
+    If it is not equal, it zeroes the heap pointer via cmov.
 
     Following this instruction, the CFI label register (`r14`) will be
     zero if the check passed, and nonzero if it did not.

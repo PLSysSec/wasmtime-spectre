@@ -2960,7 +2960,7 @@ pub(crate) fn define<'shared>(
         EncodingRecipeBuilder::new(
             "cfi_check",
             &formats.unary_imm,
-            if DEBUG_MODE { 4+2+1+6+7+3+4+4 } else { 7+3+4+4 },
+            if DEBUG_MODE { 4+2+1+6+7+3+4 } else { 7+3+4 },
         )
         .clobbers_flags(true)
         .emit(
@@ -2983,14 +2983,13 @@ pub(crate) fn define<'shared>(
                 }
 
                 use cranelift_spectre::inst::{get_sub_const_bytes, get_test_bytes, get_cmovnz};
-                use cranelift_spectre::inst::{R_R14, R_R15, R_RSP};
+                use cranelift_spectre::inst::{R_R14, R_R15};
                 let imm: i64 = imm.into();
                 for byte in get_sub_const_bytes(R_R14, imm as u32) { sink.put1(byte); }
                 for &byte in get_test_bytes(R_R14) { sink.put1(byte); }
-                // we now always zero the stack and heap in event of misprediction,
+                // we now always zero the heap in event of misprediction,
                 // to simplify chaining / avoid the control flow laundering problem
                 for byte in get_cmovnz(R_R15, R_R14) { sink.put1(byte); }
-                for byte in get_cmovnz(R_RSP, R_R14) { sink.put1(byte); }
             "#,
         ),
     );
