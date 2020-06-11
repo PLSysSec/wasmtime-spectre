@@ -25,6 +25,10 @@ use core::fmt;
 #[cfg(feature = "enable-serde")]
 use serde::{Deserialize, Serialize};
 
+use cranelift_spectre::settings::{
+    get_spectre_pht_mitigation, SpectrePHTMitigation,
+};
+
 /// Offset in bytes from the beginning of the function.
 ///
 /// Cranelift can be used as a cross compiler, so we don't want to use a type like `usize` which
@@ -214,12 +218,15 @@ where
     sink.begin_jumptables();
 
     // Output jump tables.
+    let mitigation = get_spectre_pht_mitigation();
     for (jt, jt_data) in func.jump_tables.iter() {
         let jt_offset = func.jt_offsets[jt];
         for &(block, label) in jt_data.iter() {
             let rel_offset: i32 = func.offsets[block] as i32 - jt_offset as i32;
             sink.put4(rel_offset as u32);
-            sink.put4(label);
+            if mitigation == SpectrePHTMitigation::CFI {
+                sink.put4(label);
+            }
         }
     }
 
