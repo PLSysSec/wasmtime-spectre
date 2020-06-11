@@ -1,5 +1,5 @@
 use crate::cursor::{Cursor, EncCursor};
-use crate::ir::{Block, Inst, InstBuilder, InstructionData, Value, ValueLoc};
+use crate::ir::{Block, Inst, InstBuilder, InstructionData, Value, ValueLoc, types};
 use crate::ir::function::Function;
 use crate::ir::instructions::{BranchInfo, Opcode};
 use crate::isa::{registers::RegUnit, TargetIsa};
@@ -61,7 +61,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
                     }
 
                     cur.ins().set_cfi_label(REPLACE_LABEL_1 as i64);
-                    let new_label = cur.ins().condbr_get_new_cfi_label(REPLACE_LABEL_2 as i64);
+                    let new_label = cur.ins().iconst(types::I64, REPLACE_LABEL_2 as i64);
 
                     let (dest, varargs): (Block, Vec<Value>) = {
                         let brinfo = cur.func.dfg.analyze_branch(inst);
