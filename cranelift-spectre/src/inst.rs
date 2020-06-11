@@ -171,7 +171,7 @@ fn get_reg_bits(reg: u16) -> u8 {
         R_R13 => 5,
         R_R14 => 6,
         R_R15 => 7,
-        _ => panic!("Unknown reg:{}", reg),
+        _ => panic!("Unknown reg: {}", reg),
     }
 }
 
@@ -354,13 +354,17 @@ pub fn get_curr_func() -> String {
     })
 }
 
+/*
 pub fn get_condbr_new_cfi_label_bytes(
     block1_label_reg: u16,
     block2_label_reg: u16,
     out_reg: u16,
 ) -> Vec<u8> {
     // See docs on the "condbr_get_new_cfi_label" instruction
+    // in the form in which it existed prior to wasmtime commit
+    // cd418822.
     // (notes in meta/src/isa/x86/instructions.rs)
+    //
     // This should return the bytes for the following instructions:
     // ```
     // test r14, r14
@@ -375,10 +379,13 @@ pub fn get_condbr_new_cfi_label_bytes(
     bytes.extend_from_slice(&get_cmovz(out_reg, block2_label_reg));
     bytes
 }
+*/
 
-// pub fn get_uncondbr_new_cfi_label_bytes(block1_label_reg: u16) -> Vec<u8> {
-//     // mov out, block1_label
-//     let mut bytes = get_test_bytes(R_R14).to_vec();
-//     bytes.extend_from_slice(&get_cmovz(R_R14, block1_label_reg));
-//     bytes
-// }
+/*
+pub fn get_uncondbr_new_cfi_label_bytes(block1_label_reg: u16) -> Vec<u8> {
+    // mov out, block1_label
+    let mut bytes = get_test_bytes(R_R14).to_vec();
+    bytes.extend_from_slice(&get_cmovz(R_R14, block1_label_reg));
+    bytes
+}
+*/

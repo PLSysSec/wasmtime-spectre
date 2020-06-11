@@ -1357,7 +1357,6 @@ fn define_alu(
     let ushr_imm = shared.by_name("ushr_imm");
     let x86_bsf = x86.by_name("x86_bsf");
     let x86_bsr = x86.by_name("x86_bsr");
-    let condbr_get_new_cfi_label = x86.by_name("condbr_get_new_cfi_label");
     let set_cfi_label = x86.by_name("set_cfi_label");
     let cfi_check = x86.by_name("cfi_check_that_label_is_equal_to");
 
@@ -1375,7 +1374,6 @@ fn define_alu(
     let rec_setf_abcd = r.template("setf_abcd");
     let rec_seti_abcd = r.template("seti_abcd");
     let rec_urm = r.template("urm");
-    let rec_new_cfi_label = r.template("condbr_get_new_cfi_label");
     let rec_set_cfi_label = r.template("set_cfi_label");
     let rec_cfi_check = r.recipe("cfi_check");
 
@@ -1543,7 +1541,6 @@ fn define_alu(
     e.enc_i32_i64(x86_bsf, rec_bsf_and_bsr.opcodes(&BIT_SCAN_FORWARD));
     e.enc_i32_i64(x86_bsr, rec_bsf_and_bsr.opcodes(&BIT_SCAN_REVERSE));
 
-    e.enc64(condbr_get_new_cfi_label, rec_new_cfi_label.opcodes(&MOV_IMM).rex().w());
     e.enc64(set_cfi_label, rec_set_cfi_label.opcodes(&MOV_IMM).rex().w());
     e.enc64_rec(cfi_check, rec_cfi_check, 0);
 

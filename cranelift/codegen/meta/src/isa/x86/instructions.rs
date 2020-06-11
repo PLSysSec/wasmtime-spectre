@@ -261,31 +261,8 @@ pub(crate) fn define(
         .operands_out(vec![y, rflags]),
     );
 
-    const CFI_LABEL_SIZE_BITS: u16 = 64;
-    let block_label = &TypeVar::new(
-        "block_label",
-        "A CFI block label",
-        TypeSetBuilder::new()
-            .ints(CFI_LABEL_SIZE_BITS..CFI_LABEL_SIZE_BITS)
-            .build(),
-    );
-    let cfi_label = &Operand::new("cfi_label", block_label);
-
-    let imm64 = &immediates.imm64;
-    let block_label_imm = &Operand::new("i", imm64).with_doc( "An immediate representing the block label");
-
-    ig.push(
-        Inst::new(
-            "condbr_get_new_cfi_label",
-            r#"
-    This simply outputs the label given as argument. It is equivalent to (one
-    case of) `iconst`, under a different name.
-    "#,
-            &formats.unary_imm,
-        )
-        .operands_in(vec![block_label_imm])
-        .operands_out(vec![cfi_label]),
-    );
+    let block_label_imm = &Operand::new("i", &immediates.imm64)
+        .with_doc( "An immediate representing the block label");
 
     ig.push(
         Inst::new(

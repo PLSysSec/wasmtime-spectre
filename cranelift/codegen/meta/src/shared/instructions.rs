@@ -309,8 +309,8 @@ fn define_control_flow(
             Inst::new(
                 "jump_table_entry_cfi",
                 r#"
-    Get an entry from a jump table, also setting the CFI label register (r14)
-    appropriately.
+    Get an entry from a jump table, also setting the CFI label register
+    (`r14`) appropriately.
 
     Load a serialized ``entry`` from a jump table ``JT`` at a given index
     ``addr`` with a specific ``Size``. The retrieved entry may need to be

@@ -2937,26 +2937,6 @@ pub(crate) fn define<'shared>(
     recipes.add_template(
         Template::new(
             EncodingRecipeBuilder::new(
-                "condbr_get_new_cfi_label",
-                &formats.unary_imm,
-                8)
-            .operands_out(vec![gpr])
-            .clobbers_flags(false)
-            .emit(
-            r#"
-                    // mov tmp, new_label
-                    {{PUT_OP}}(bits | (out_reg0 & 7), rex1(out_reg0), sink);
-                    let imm: i64 = imm.into();
-                    sink.put8(imm as u64);
-                "#,
-            ),
-            regs,
-        )
-    );
-
-    recipes.add_template(
-        Template::new(
-            EncodingRecipeBuilder::new(
                 "set_cfi_label",
                 &formats.unary_imm,
                 8,
