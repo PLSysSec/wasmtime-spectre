@@ -445,7 +445,7 @@ pub fn do_cfi_set_correct_labels(_func: &mut Function, _isa: &dyn TargetIsa) {
 }
 
 /// Optimize CFI checks in loops to prevent loop iteration serialization
-pub fn do_cfi_loop_optimize(func: &mut Function, isa: &dyn TargetIsa, cfg: &mut ControlFlowGraph, loop_analysis: &LoopAnalysis) {
+pub fn do_cfi_loop_optimize(func: &mut Function, isa: &dyn TargetIsa, loop_analysis: &LoopAnalysis) {
     let mut cur = EncCursor::new(func, isa);
 
     for lp in loop_analysis.loops() {
