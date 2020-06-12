@@ -269,6 +269,20 @@ fn define_control_flow(
             .operands_in(vec![Cond, f, cfi_label, block, args])
             .is_branch(true),
         );
+
+        ig.push(
+            Inst::new(
+                "brif_cfi_loopend",
+                r#"
+        Branch when condition is true in integer CPU flags, for CFI, special loopend case.
+
+        See notes on brnz_cfi_loopend or brz_cfi_loopend.
+        "#,
+                &formats.branch_icmp, // branch_int_cfi
+            )
+            .operands_in(vec![Cond, f, cfi_label, block, args])
+            .is_branch(true),
+        );
     }
 
     {
@@ -293,6 +307,20 @@ fn define_control_flow(
                 "brff_cfi",
                 r#"
         Branch when condition is true in floating point CPU flags, for CFI.
+        "#,
+                &formats.branch_float_cfi,
+            )
+            .operands_in(vec![Cond, f, cfi_label, block, args])
+            .is_branch(true),
+        );
+
+        ig.push(
+            Inst::new(
+                "brff_cfi_loopend",
+                r#"
+        Branch when condition is true in floating point CPU flags, for CFI, special loopend case.
+
+        See notes on brnz_cfi_loopend or brz_cfi_loopend.
         "#,
                 &formats.branch_float_cfi,
             )

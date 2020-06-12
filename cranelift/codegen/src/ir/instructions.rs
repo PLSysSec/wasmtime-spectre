@@ -183,11 +183,6 @@ impl InstructionData {
                 ref args,
                 ..
             }
-            | Self::BranchFloatCFI {
-                destination,
-                ref args,
-                ..
-            }
             | Self::Branch {
                 destination,
                 ref args,
@@ -199,6 +194,11 @@ impl InstructionData {
                 ..
             }
             | Self::BranchCFI {
+                destination,
+                ref args,
+                ..
+            }
+            | Self::BranchFloatCFI {
                 destination,
                 ref args,
                 ..
