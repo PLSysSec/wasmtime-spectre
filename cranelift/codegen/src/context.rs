@@ -518,7 +518,7 @@ impl Context {
 
     /// Actually add CFI checks
     pub fn cfi_add_checks(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
-        do_cfi_add_checks(&mut self.func, isa);
+        do_cfi_add_checks(&mut self.func, isa, &self.cfg, &self.domtree);
         self.verify_if(isa)
     }
 

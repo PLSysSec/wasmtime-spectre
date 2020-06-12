@@ -1,4 +1,6 @@
 use crate::cursor::{Cursor, EncCursor};
+use crate::dominator_tree::DominatorTree;
+use crate::flowgraph::ControlFlowGraph;
 use crate::ir::{Block, Inst, InstBuilder, InstructionData, Value, ValueLoc, types};
 use crate::ir::function::Function;
 use crate::ir::instructions::{BranchInfo, Opcode};
@@ -261,6 +263,10 @@ fn set_prev_valid_insert_point(cur: &mut EncCursor) {
     }
 }
 
+// If this is true, then do dominator-related optimizations to effectively
+// omit/combine certain blocks in the CFG for CFI purposes
+const CFI_DO_DOMINATOR_OPTS: bool = true;
+
 /// Assign a unique CFI number to each linear block
 pub fn do_cfi_number_allocate(func: &mut Function, isa: &dyn TargetIsa, cfi_start_num: &mut u64) {
     let mut cur = EncCursor::new(func, isa);
@@ -286,7 +292,12 @@ pub fn do_cfi_number_allocate(func: &mut Function, isa: &dyn TargetIsa, cfi_star
     }
 }
 
-pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa) {
+pub fn do_cfi_add_checks(
+    func: &mut Function,
+    isa: &dyn TargetIsa,
+    cfg: &ControlFlowGraph,
+    domtree: &DominatorTree,
+) {
     let mut cur = EncCursor::new(func, isa);
 
     if should_print() {
@@ -303,6 +314,16 @@ pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa) {
 
     while let Some(block) = cur.next_block() {
         divert.at_block(&cur.func.entry_diversions, block);
+
+        if CFI_DO_DOMINATOR_OPTS {
+            match cfi_can_skip_block(block, &mut cur, cfg, domtree, isa, &divert) {
+                SkipResult::CanSkip { succ_block } => {
+                    cur.func.cfi_block_nums[block] = cur.func.cfi_block_nums[succ_block];
+                    continue;
+                }
+                SkipResult::CantSkip => {}
+            }
+        }
 
         first_inst_in_block = true;
 
@@ -324,6 +345,70 @@ pub fn do_cfi_add_checks(func: &mut Function, isa: &dyn TargetIsa) {
     if should_print() {
         println!("Function at bottom of do_cfi_add_checks:\n{}", cur.func.display(isa));
     }
+}
+
+enum SkipResult {
+    CanSkip {
+        succ_block: Block, // the successor block
+    },
+    CantSkip,
+}
+
+/// Can CFI skip the given `block`?
+///
+/// This function preserves the cursor position.
+fn cfi_can_skip_block(
+    block: Block,
+    cur: &mut EncCursor,
+    cfg: &ControlFlowGraph,
+    domtree: &DominatorTree,
+    isa: &dyn TargetIsa,
+    divert: &RegDiversions,
+) -> SkipResult {
+    // CFI can skip the block if all of the following are true:
+    //   - Block has exactly one predecessor
+    //   - Block is dominated by its predecessor
+    //   - Block has exactly one successor
+    //   - Successor post-dominates Block - but this is implied by the bullet above
+    //   - Block contains no heap operations
+    // Making things more complicated, all of these things need to be computed
+    // based on linear blocks, not Cranelift EBBs.
+    // For now, we apply this optimization only to blocks which are both a
+    // linear block and a Cranelift EBB - i.e., contain no call or
+    // non-terminator branch instructions.
+    let pred = {
+        let mut preds = cfg.pred_iter(block);
+        match preds.next() {
+            None => return SkipResult::CantSkip, // Block has no predecessors
+            Some(pred) => match preds.next() {
+                None => pred, // Block has exactly one predecessor, this `pred`
+                Some(_) => return SkipResult::CantSkip, // Block has >= 2 predecessors
+            }
+        }
+    };
+    let succ = {
+        let mut succs = cfg.succ_iter(block);
+        match succs.next() {
+            None => return SkipResult::CantSkip, // Block has no successors
+            Some(succ) => match succs.next() {
+                None => succ, // Block has exactly one successor, this `succ`
+                Some(_) => return SkipResult::CantSkip, // Block has >= 2 successors
+            }
+        }
+    };
+    if !domtree.dominates(pred.inst, block, &cur.func.layout) {
+        // Pred does not dominate block
+        return SkipResult::CantSkip;
+    }
+    if is_heap_op_in_block(cur, block, isa, divert) {
+        // Block contains a heap operation
+        return SkipResult::CantSkip;
+    }
+    if is_call_or_non_term_branch_in_block(cur, block) {
+        // Block is not a Cranelift EBB - see notes above
+        return SkipResult::CantSkip;
+    }
+    return SkipResult::CanSkip { succ_block: succ };
 }
 
 /// Set the correct CFI labels for each branch, jump, call etc instruction
@@ -707,7 +792,8 @@ fn get_registers<'a>(func: &'a Function, divert: &'a RegDiversions, values: impl
 fn is_heap_op(isa: &dyn TargetIsa, opcode: Opcode, mut in_regs: impl Iterator<Item = RegUnit>) -> bool {
     let r15 = isa.register_info().parse_regunit("r15").unwrap();
     if opcode.can_load() || opcode.can_store() {
-        in_regs.any(|r| r == r15)
+        in_regs.by_ref().any(|r| r == r15)
+            || !is_stack_op(isa, opcode, in_regs)
     } else {
         false
     }
@@ -726,6 +812,34 @@ fn is_stack_op(isa: &dyn TargetIsa, opcode: Opcode, mut in_regs: impl Iterator<I
     } else {
         false
     }
+}
+
+/// Is there a heap operation in the given `Block`?
+///
+/// It doesn't matter where `cur` is pointing - it doesn't have to be pointing at
+/// `block` when calling this function. But `divert` should be for the
+/// appropriate `Block`.
+///
+/// This function preserves the cursor position.
+fn is_heap_op_in_block(cur: &mut EncCursor, block: Block, isa: &dyn TargetIsa, divert: &RegDiversions) -> bool {
+    let saved_position = cur.position();
+    cur.goto_first_inst(block);
+    let found_heap_op = loop {
+        match cur.current_inst() {
+            None => break false, // done with all instructions in block
+            Some(inst) => {
+                let opcode = cur.func.dfg[inst].opcode();
+                let args = cur.func.dfg.inst_args(inst).iter().copied();
+                let in_regs = get_registers(&cur.func, &divert, args);
+                if is_heap_op(isa, opcode, in_regs) {
+                    break true;
+                }
+            }
+        }
+        cur.next_inst();
+    };
+    cur.set_position(saved_position);
+    return found_heap_op;
 }
 
 /// Is there a heap operation or stack operation somewhere between where the
@@ -787,4 +901,31 @@ fn is_followed_by_non_jump_or_fallthrough(cur: &mut EncCursor) -> bool {
         None => panic!("is_followed_by_non_jump_or_fallthrough: this is the last instruction in block"), // caller should not call this with a terminator
         _ => true,
     }
+}
+
+/// Is there a call or non-terminator branch in the given `Block`?
+///
+/// It doesn't matter where `cur` is pointing - it doesn't have to be pointing at
+/// `block` when calling this function.
+///
+/// This function preserves the cursor position.
+fn is_call_or_non_term_branch_in_block(cur: &mut EncCursor, block: Block) -> bool {
+    let saved_position = cur.position();
+    cur.goto_first_inst(block);
+    let found = loop {
+        match cur.current_inst() {
+            None => break false, // done with all instructions in block
+            Some(inst) => {
+                let opcode = cur.func.dfg[inst].opcode();
+                if !opcode.is_terminator()
+                    && (opcode.is_call() || opcode.is_branch() || opcode.is_indirect_branch())
+                {
+                    break true;
+                }
+            }
+        }
+        cur.next_inst();
+    };
+    cur.set_position(saved_position);
+    return found;
 }
