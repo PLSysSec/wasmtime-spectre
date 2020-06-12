@@ -226,8 +226,6 @@ impl Context {
                     self.condbr_cfi(isa)?;
                     self.br_cfi(isa)?;
                     self.indirectbr_cfi(isa)?;
-                    self.cfi_loop_optimize(isa)?;
-
 
                     // add_checks also needs some temps
                     // Note that these passes very much assume that this is the final
@@ -553,15 +551,6 @@ impl Context {
     pub fn indirectbr_cfi(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
         do_indirectbr_cfi(&mut self.func, isa);
         // we recompute CFG and domtree in case they have been invalidated by the pass
-        self.compute_cfg();
-        self.compute_domtree();
-        self.verify_if(isa)
-    }
-
-    /// Optimize CFI checks in loops to prevent loop iteration serialization
-    pub fn cfi_loop_optimize(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
-        do_cfi_loop_optimize(&mut self.func, isa, &self.loop_analysis);
-        // we recompute CFG and domtree in case as this pass adds news blocks
         self.compute_cfg();
         self.compute_domtree();
         self.verify_if(isa)
