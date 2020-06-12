@@ -130,12 +130,8 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa, cfg: &ControlFlowGrap
         return
     }
 
-    let mut divert = RegDiversions::new();
-
     while let Some(block) = cur.next_block() {
-        divert.at_block(&cur.func.entry_diversions, block);
-
-        match cfi_can_skip_block(block, &mut cur, cfg, domtree, isa, &divert) {
+        match cfi_can_skip_block(block, &mut cur, cfg, domtree) {
             SkipResult::CanSkip { succ_block: _ } => {
                 // println!("Block_num:{:?}\n", block);
                 continue;
@@ -315,15 +311,11 @@ pub fn do_cfi_add_checks(
         return
     }
 
-    let mut divert = RegDiversions::new();
-
     let mut first_block_in_func = true;
     let mut first_inst_in_block;
 
     while let Some(block) = cur.next_block() {
-        divert.at_block(&cur.func.entry_diversions, block);
-
-        match cfi_can_skip_block(block, &mut cur, cfg, domtree, isa, &divert) {
+        match cfi_can_skip_block(block, &mut cur, cfg, domtree) {
             SkipResult::CanSkip { succ_block } => {
                 cur.func.cfi_block_nums[block] = cur.func.cfi_block_nums[succ_block];
                 continue;
@@ -368,8 +360,6 @@ fn cfi_can_skip_block(
     cur: &mut EncCursor,
     cfg: &ControlFlowGraph,
     domtree: &DominatorTree,
-    isa: &dyn TargetIsa,
-    divert: &RegDiversions,
 ) -> SkipResult {
     // CFI can skip the block if all of the following are true:
     //   - Block has exactly one predecessor
