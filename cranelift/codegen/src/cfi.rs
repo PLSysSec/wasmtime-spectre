@@ -121,7 +121,7 @@ pub fn do_condbr_cfi(func: &mut Function, isa: &dyn TargetIsa) {
 }
 
 /// Insert the appropriate CFI boilerplate before each unconditional jump
-pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
+pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa, cfg: &ControlFlowGraph, domtree: &DominatorTree) {
     let mut cur: EncCursor = EncCursor::new(func, isa);
 
     if should_print() {
@@ -131,7 +131,20 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa) {
         return
     }
 
-    while let Some(_block) = cur.next_block() {
+    let mut divert = RegDiversions::new();
+
+    while let Some(block) = cur.next_block() {
+        divert.at_block(&cur.func.entry_diversions, block);
+
+        match cfi_can_skip_block(block, &mut cur, cfg, domtree, isa, &divert) {
+            SkipResult::CanSkip { succ_block: _ } => {
+
+                // println!("Block_num:{:?}\n", block);
+                continue;
+            }
+            SkipResult::CantSkip => {}
+        }
+
         while let Some(inst) = cur.next_inst() {
             let opcode = cur.func.dfg[inst].opcode();
             match opcode {
@@ -264,10 +277,6 @@ fn set_prev_valid_insert_point(cur: &mut EncCursor) {
     }
 }
 
-// If this is true, then do dominator-related optimizations to effectively
-// omit/combine certain blocks in the CFG for CFI purposes
-const CFI_DO_DOMINATOR_OPTS: bool = true;
-
 /// Assign a unique CFI number to each linear block
 pub fn do_cfi_number_allocate(func: &mut Function, isa: &dyn TargetIsa, cfi_start_num: &mut u64) {
     let mut cur = EncCursor::new(func, isa);
@@ -316,14 +325,12 @@ pub fn do_cfi_add_checks(
     while let Some(block) = cur.next_block() {
         divert.at_block(&cur.func.entry_diversions, block);
 
-        if CFI_DO_DOMINATOR_OPTS {
-            match cfi_can_skip_block(block, &mut cur, cfg, domtree, isa, &divert) {
-                SkipResult::CanSkip { succ_block } => {
-                    cur.func.cfi_block_nums[block] = cur.func.cfi_block_nums[succ_block];
-                    continue;
-                }
-                SkipResult::CantSkip => {}
+        match cfi_can_skip_block(block, &mut cur, cfg, domtree, isa, &divert) {
+            SkipResult::CanSkip { succ_block } => {
+                cur.func.cfi_block_nums[block] = cur.func.cfi_block_nums[succ_block];
+                continue;
             }
+            SkipResult::CantSkip => {}
         }
 
         first_inst_in_block = true;
@@ -919,8 +926,9 @@ fn get_registers<'a>(func: &'a Function, divert: &'a RegDiversions, values: impl
 fn is_heap_op(isa: &dyn TargetIsa, opcode: Opcode, mut in_regs: impl Iterator<Item = RegUnit>) -> bool {
     let r15 = isa.register_info().parse_regunit("r15").unwrap();
     if opcode.can_load() || opcode.can_store() {
-        in_regs.by_ref().any(|r| r == r15)
-            || !is_stack_op(isa, opcode, in_regs)
+        let ret = in_regs.by_ref().any(|r| r == r15)
+            || !is_stack_op(isa, opcode, in_regs);
+        return ret;
     } else {
         false
     }
@@ -929,13 +937,14 @@ fn is_heap_op(isa: &dyn TargetIsa, opcode: Opcode, mut in_regs: impl Iterator<It
 fn is_stack_op(isa: &dyn TargetIsa, opcode: Opcode, mut in_regs: impl Iterator<Item = RegUnit>) -> bool {
     let rsp = isa.register_info().parse_regunit("rsp").unwrap();
     if opcode.can_load() || opcode.can_store() {
-        opcode == Opcode::X86Push
+        let stack_op = opcode == Opcode::X86Push
             || opcode == Opcode::X86Pop
             || opcode == Opcode::Spill
             || opcode == Opcode::Fill
             || opcode == Opcode::Regspill
             || opcode == Opcode::Regfill
-            || in_regs.any(|r| r == rsp)
+            || in_regs.any(|r| r == rsp);
+        return stack_op;
     } else {
         false
     }
@@ -967,58 +976,6 @@ fn is_heap_op_in_block(cur: &mut EncCursor, block: Block, isa: &dyn TargetIsa, d
     };
     cur.set_position(saved_position);
     return found_heap_op;
-}
-
-/// Is there a heap operation or stack operation somewhere between where the
-/// cursor is currently pointing (including the current instruction) and the next
-/// control flow instruction (call, cond/uncond branch, etc)?
-///
-/// Returns a pair of `bool`s, where the first `bool` indicates whether there's a
-/// heap op, and the second indicates whether there's a stack op
-///
-/// Preserves the cursor position.
-fn is_heap_or_stack_op_before_next_ctrl_flow(
-    isa: &dyn TargetIsa,
-    cur: &mut EncCursor,
-    divert: &RegDiversions,
-) -> (bool, bool) {
-    let saved_cursor_position = cur.position();
-    let mut found_heap_op = false;
-    let mut found_stack_op = false;
-    loop {
-        let cur_inst = cur.current_inst();
-        if cur_inst.is_none() {
-            break;
-        }
-        let cur_inst = cur_inst.unwrap();
-        let opcode = cur.func.dfg[cur_inst].opcode();
-        let args = cur.func.dfg.inst_args(cur_inst);
-        let mut in_regs = get_registers(&cur.func, &divert, args.iter().copied());
-        // let _rets = cur.func.dfg.inst_results(cur_inst);
-        // let _out_regs = get_registers(&cur.func, &divert, _rets.iter().copied());
-
-        found_heap_op |= is_heap_op(isa, opcode, in_regs.by_ref());
-        found_stack_op |= is_stack_op(isa, opcode, in_regs);
-
-        if found_heap_op {
-            let _a = 1;
-        }
-        if found_stack_op {
-            let _a = 1;
-        }
-        if opcode.is_terminator()
-            || opcode.is_branch()
-            || opcode.is_indirect_branch()
-            || opcode.is_call()
-        {
-            // reached next control flow operation
-            break;
-        }
-        cur.next_inst();
-    }
-    // Restore the cursor position and return
-    cur.set_position(saved_cursor_position);
-    return (found_heap_op, found_stack_op);
 }
 
 /// This function preserves the cursor position.

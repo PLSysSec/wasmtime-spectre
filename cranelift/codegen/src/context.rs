@@ -542,7 +542,7 @@ impl Context {
 
     /// Insert the appropriate CFI boilerplate before each unconditional jump
     pub fn br_cfi(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
-        do_br_cfi(&mut self.func, isa);
+        do_br_cfi(&mut self.func, isa, &self.cfg, &self.domtree);
         // we recompute CFG and domtree in case they have been invalidated by the pass
         self.compute_cfg();
         self.compute_domtree();
@@ -560,7 +560,7 @@ impl Context {
 
     /// Optimize CFI checks in loops to prevent loop iteration serialization
     pub fn cfi_loop_optimize(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
-        do_cfi_loop_optimize(&mut self.func, isa, &mut self.cfg, &self.loop_analysis);
+        do_cfi_loop_optimize(&mut self.func, isa, &self.loop_analysis);
         // we recompute CFG and domtree in case as this pass adds news blocks
         self.compute_cfg();
         self.compute_domtree();
