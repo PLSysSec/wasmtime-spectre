@@ -137,7 +137,6 @@ pub fn do_br_cfi(func: &mut Function, isa: &dyn TargetIsa, cfg: &ControlFlowGrap
 
         match cfi_can_skip_block(block, &mut cur, cfg, domtree, isa, &divert) {
             SkipResult::CanSkip { succ_block: _ } => {
-
                 // println!("Block_num:{:?}\n", block);
                 continue;
             }
@@ -377,12 +376,31 @@ fn cfi_can_skip_block(
     //   - Block is dominated by its predecessor
     //   - Block has exactly one successor
     //   - Successor post-dominates Block - but this is implied by the bullet above
-    //   - Block contains no heap operations
-    // Making things more complicated, all of these things need to be computed
-    // based on linear blocks, not Cranelift EBBs.
-    // For now, we apply this optimization only to blocks which are both a
-    // linear block and a Cranelift EBB - i.e., contain no call or
-    // non-terminator branch instructions.
+    //   - Block contains no meaningful operations, e.g. contains just an unconditional jump.
+    //       (This is more common than you may think in Cranelift.)
+    //     The reason we can't even allow, e.g., rax <- 2 in the Block is because
+    //     then an attacker could mispredict rax to be 2 and the CFI system would
+    //     not catch it.  Consider the following code:
+    //
+    //     if (idx > len) {
+    //         idx = len - 1;
+    //     }
+    //     < leak arr[idx] >
+    //
+    //     The middle block `idx = len - 1` likely meets the pred/succ conditions,
+    //     but if we remove the CFI check/set from it, then the attacker can
+    //     leak arbitrary heap memory as the heap pointer won't be zeroed.
+    //
+    // For now, we have CFI skip the block only if it meets the pred/succ
+    // conditions and contains only a single instruction, that being an
+    // unconditional jump. We consider all other instructions unsafe.
+    //
+    // We also must remember that there is a difference between linear blocks
+    // and Cranelift EBBs.
+    // That said, since we've already said we're not considering `Block`s with
+    // call or non-terminator branch instructions, all the `Block`s we're
+    // interested in are both a linear block and a Cranelift EBB, so the CFG
+    // methods apply.
     let pred = {
         let mut preds = cfg.pred_iter(block);
         match preds.next() {
@@ -407,12 +425,12 @@ fn cfi_can_skip_block(
         // Pred does not dominate block
         return SkipResult::CantSkip;
     }
-    if is_heap_op_in_block(cur, block, isa, divert) {
-        // Block contains a heap operation
+    if count_instructions_in_block(cur, block) != 1 {
+        // Block contains more than one instruction (or zero instructions (?))
         return SkipResult::CantSkip;
     }
-    if is_call_or_non_term_branch_in_block(cur, block) {
-        // Block is not a Cranelift EBB - see notes above
+    if !block_terminator_is_uncond_br(cur, block) {
+        // Block terminator is something other than an unconditional branch
         return SkipResult::CantSkip;
     }
     return SkipResult::CanSkip { succ_block: succ };
@@ -885,4 +903,43 @@ fn is_call_or_non_term_branch_in_block(cur: &mut EncCursor, block: Block) -> boo
     };
     cur.set_position(saved_position);
     return found;
+}
+
+/// How many instructions are in the given `Block`?
+///
+/// It doesn't matter where `cur` is pointing - it doesn't have to be pointing at
+/// `block` when calling this function.
+///
+/// This function preserves the cursor position.
+fn count_instructions_in_block(cur: &mut EncCursor, block: Block) -> usize {
+    let saved_position = cur.position();
+    cur.goto_first_inst(block);
+
+    let mut count = 0;
+    while let Some(_) = cur.current_inst() {
+        count = count + 1;
+        cur.next_inst();
+    }
+
+    cur.set_position(saved_position);
+    return count;
+}
+
+/// Is the block terminator an unconditional branch/jump?
+///
+/// It doesn't matter where `cur` is pointing - it doesn't have to be pointing at
+/// `block` when calling this function.
+///
+/// This function preserves the cursor position.
+fn block_terminator_is_uncond_br(cur: &mut EncCursor, block: Block) -> bool {
+    let saved_position = cur.position();
+    cur.goto_last_inst(block);
+
+    let ret = match cur.func.dfg[cur.current_inst().unwrap()].opcode() {
+        Opcode::Jump | Opcode::Fallthrough => true,
+        _ => false,
+    };
+
+    cur.set_position(saved_position);
+    return ret;
 }
