@@ -1,6 +1,7 @@
 use crate::cursor::{Cursor, EncCursor};
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
+use crate::loop_analysis::LoopAnalysis;
 use crate::ir::{Block, Inst, InstBuilder, InstructionData, Value, ValueLoc, types};
 use crate::ir::function::Function;
 use crate::ir::instructions::{BranchInfo, Opcode};
@@ -439,6 +440,103 @@ pub fn do_cfi_set_correct_labels(_func: &mut Function, _isa: &dyn TargetIsa) {
 
     set_labels_for_jumptablebr(&mut cur.func);
     */
+}
+
+/// Optimize CFI checks in loops to prevent loop iteration serialization
+pub fn do_cfi_loop_optimize(func: &mut Function, isa: &dyn TargetIsa, cfg: &mut ControlFlowGraph, loop_analysis: &LoopAnalysis) {
+    // let mut cur = EncCursor::new(func, isa);
+
+    // for lp in loop_analysis.loops() {
+    //     let header = loop_analysis.loop_header(lp);
+    //     let predecessors = cfg.pred_iter().
+    // }
+
+    // while let Some(block) = cur.next_block() {
+    //     if is_conditional_backward_edge_out(&mut cur, isa, block) {
+    //         conditional_backward_loop_optimize(&mut cur, block);
+    //     }
+    // }
+}
+
+/// Identify loops with a conditional backward edge i.e.
+///
+/// ```
+/// block1:
+///     ...
+/// block2:
+///     ...
+/// ...:
+///     ...
+/// cond:
+///     brx_cfi block1
+/// ```
+fn is_conditional_backward_edge_out(cur : &mut EncCursor, isa: &dyn TargetIsa, block: Block) -> bool {
+    // cur.goto_last_inst(block);
+    // let term_inst = cur.current_inst().unwrap();
+    // let opcode = cur.func.dfg[term_inst].opcode();
+    // match opcode {
+    //     Opcode::BrzCfi | Opcode::BrnzCfi | Opcode::BrifCfi | Opcode::BrffCfi => {
+    //         let br_block = match cur.func.dfg.analyze_branch(term_inst) {
+    //             BranchInfo::SingleDest(dest, _) => dest,
+    //             _ => {
+    //                 panic!("expected inst to be a SingleDest {:?}", opcode);
+    //             }
+    //         };
+    //         for ebb in cur.func.layout.blocks() {
+    //             if ebb == block {
+    //                 // reached our block, not a backward edge
+    //                 return false;
+    //             } else if ebb == br_block {
+    //                 // found the target
+    //                 println!("Function at is_conditional_backward_edge_out:\n{}", cur.func.display(isa));
+    //                 return true;
+    //             }
+    //         }
+    //     }
+    //     _ => {}
+    // };
+
+    return false;
+}
+
+/// Convert loops with a backward edge to prevent loop iteration serialization. The following
+///
+/// ```
+/// block1:
+///     ...
+/// block2:
+///     ...
+/// ...:
+///     ...
+/// cond:
+///     ...
+///     set_cfi_label done
+///     cmp ...
+///     brx_cfi block1
+/// done:
+/// ```
+///
+/// is converted to (changes capitalized)
+///
+/// ```
+/// block1:
+///     ...
+/// block2:
+///     ...
+/// ...:
+///     ...
+/// cond:
+///     ...
+///     set_cfi_label BLOCK1
+///     cmp ...
+///     BRX block1
+/// FALLTHROUGH:
+///     CMP ...
+///     COND_SET_CFI_LABEL DONE
+/// done:
+/// ```
+fn conditional_backward_loop_optimize(cur: &mut EncCursor, block: Block) {
+
 }
 
 /// Add CFI top-of-block check instruction to the block.

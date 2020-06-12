@@ -14,7 +14,7 @@ use crate::binemit::{
     TrapSink,
 };
 use crate::blade::do_blade;
-use crate::cfi::{do_br_cfi, do_cfi_add_checks, do_cfi_number_allocate, do_cfi_set_correct_labels, do_condbr_cfi, do_indirectbr_cfi};
+use crate::cfi::*;
 use crate::dce::do_dce;
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
@@ -226,6 +226,8 @@ impl Context {
                     self.condbr_cfi(isa)?;
                     self.br_cfi(isa)?;
                     self.indirectbr_cfi(isa)?;
+                    self.cfi_loop_optimize(isa)?;
+
 
                     // add_checks also needs some temps
                     // Note that these passes very much assume that this is the final
@@ -452,6 +454,7 @@ impl Context {
         self.regalloc.do_branch_splitting(isa, &mut self.func, &mut self.cfg, &mut self.domtree);
         self.compute_cfg();
         self.compute_domtree();
+        self.compute_loop_analysis();
         self.verify_if(isa)
     }
 
@@ -550,6 +553,15 @@ impl Context {
     pub fn indirectbr_cfi(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
         do_indirectbr_cfi(&mut self.func, isa);
         // we recompute CFG and domtree in case they have been invalidated by the pass
+        self.compute_cfg();
+        self.compute_domtree();
+        self.verify_if(isa)
+    }
+
+    /// Optimize CFI checks in loops to prevent loop iteration serialization
+    pub fn cfi_loop_optimize(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
+        do_cfi_loop_optimize(&mut self.func, isa, &mut self.cfg, &self.loop_analysis);
+        // we recompute CFG and domtree in case as this pass adds news blocks
         self.compute_cfg();
         self.compute_domtree();
         self.verify_if(isa)
