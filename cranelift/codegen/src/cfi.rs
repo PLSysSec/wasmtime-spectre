@@ -2,11 +2,12 @@ use crate::cursor::{Cursor, EncCursor};
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
 use crate::loop_analysis::{Loop, LoopAnalysis};
-use crate::ir::{Block, Inst, InstBuilder, InstructionData, Value, ValueLoc, types};
+use crate::ir::{Block, Inst, InstBuilder, InstructionData, ProgramOrder, Value, ValueLoc, types};
 use crate::ir::function::Function;
 use crate::ir::instructions::{BranchInfo, Opcode};
 use crate::isa::{registers::RegUnit, TargetIsa};
 use alloc::vec::Vec;
+use core::cmp::Ordering;
 
 use crate::regalloc::RegDiversions;
 
@@ -458,7 +459,7 @@ pub fn do_cfi_loop_optimize(func: &mut Function, isa: &dyn TargetIsa, _cfg: &Con
     // let cur_func = cranelift_spectre::inst::get_curr_func();
     // if cur_func.starts_with("guest_func_strlen") || cur_func.starts_with("guest_func_spec_printBranch2") {
     if should_print() {
-        println!("Function at top of do_cfi_add_checks:\n{}", cur.func.display(isa));
+        println!("Function at top of do_cfi_loop_optimize:\n{}", cur.func.display(isa));
     }
 
     for lp in loop_analysis.loops() {
@@ -480,13 +481,23 @@ pub fn do_cfi_loop_optimize(func: &mut Function, isa: &dyn TargetIsa, _cfg: &Con
 }
 
 struct LoopDetails {
+    /// The "loop header" block as determined by Cranelift's loop analysis
     header_block: Block,
+    /// The successor of the header block which is inside the loop
     body_block: Block,
+    /// The successor of the header block which is outside the loop
     exit_block: Block,
+    /// The branch or jump instruction from the header block to the body block
     branch_body: Inst,
+    /// The branch or jump instruction from the header block to the exit block
     branch_exit: Inst,
+    /// Is the header block before the body block in the layout
     header_before_body: bool,
 }
+
+/// This function does NOT preserve the cursor position.
+/// Rather, when this function returns, the cursor will be pointing to the
+/// `branch_body`.
 fn get_loop_details(cur: &mut EncCursor, isa: &dyn TargetIsa, loop_analysis: &LoopAnalysis, lp: Loop) -> LoopDetails {
     let header_block = loop_analysis.loop_header(lp);
 
@@ -531,7 +542,11 @@ fn get_loop_details(cur: &mut EncCursor, isa: &dyn TargetIsa, loop_analysis: &Lo
     return ret;
 }
 
-fn branch_points_to_loop(cur: &mut EncCursor, loop_analysis: &LoopAnalysis, lp: Loop, inst: Inst) -> bool {
+/// Does the given `inst` (which should be a branch/jump) point to a block inside
+/// the given `Loop`?
+///
+/// This function preserves the cursor position.
+fn branch_points_to_loop(cur: &EncCursor, loop_analysis: &LoopAnalysis, lp: Loop, inst: Inst) -> bool {
     let ret = match cur.func.dfg.analyze_branch(inst) {
         BranchInfo::SingleDest(dest, _) => {
             loop_analysis.is_in_loop(dest, lp)
@@ -541,7 +556,11 @@ fn branch_points_to_loop(cur: &mut EncCursor, loop_analysis: &LoopAnalysis, lp: 
     return ret;
 }
 
-fn block_before(cur: &mut EncCursor, isa: &dyn TargetIsa, block_a: Block, block_b: Block) -> bool {
+/// Returns `true` if `block_a` is before `block_b` in the layout.
+///
+/// This function preserves the cursor position.
+fn block_before(cur: &mut EncCursor, _isa: &dyn TargetIsa, block_a: Block, block_b: Block) -> bool {
+    /*
     let saved_position = cur.position();
 
     // go to the beginning
@@ -557,16 +576,40 @@ fn block_before(cur: &mut EncCursor, isa: &dyn TargetIsa, block_a: Block, block_
             ret = Some(false);
         }
     }
+    let ret = ret.unwrap();
 
     cur.set_position(saved_position);
-    return ret.unwrap();
+    */
+
+    let ret = cur.func.layout.cmp(block_a, block_b) == Ordering::Less;
+
+    return ret;
 }
 
 /// Change loop CFI to prevent loop iteration serialization.
 ///
-/// This amounts solely to changing brx_cfi to brx_cfi_loopend, and switching the
-/// label that was set beforehand (from the fallthrough label, to the branch
-/// label).
+/// This function handles "Case 1" and "Case 3":
+/// ```
+///   BEFORE            ---->  AFTER
+/// while:                   while:
+///   set_cfi_label #done      set_cfi_label #body
+///   cmp or test              cmp or test
+///   cmovnz r14, #body        brnz body
+///   brnz body                cmovz r14, #done
+///   jmp done                 jmp done
+/// ```
+/// In this example, the `cmovnz-brnz` sequence is `brnz_cfi`, and the
+/// `brnz-cmovz` sequence is `brnz_cfi_loopend`.
+///
+/// It's not important for this function, but the difference between Case 1 and
+/// Case 3 is that in Case 1, the `brnz body` is a forward jump (layout
+/// while-body-done), while in Case 3, the `brnz body` is a backward jump and the
+/// `jmp done` is a fallthrough (layout body-while-done).
+///
+/// Thus, this function does two things:
+///   (1) Change brx_cfi to brx_cfi_loopend (and change the label argument)
+///   (2) Switch the label that was set beforehand: from the fallthrough label, to
+///       the branch label
 ///
 /// Callers should assume that this function _clobbers_ the cursor position.
 fn apply_loopend_opt(cur: &mut EncCursor, loop_details: LoopDetails) {
@@ -621,6 +664,7 @@ fn apply_loopend_opt(cur: &mut EncCursor, loop_details: LoopDetails) {
     }
 
     // TODO: need to change the label that was set
+    // and also need to change the label that is argument to the new brx_cfi_loopend instruction
 }
 
 /// Convert loops with an unconditional forward edge (preceeded by a
