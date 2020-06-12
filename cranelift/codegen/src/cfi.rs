@@ -1,7 +1,7 @@
 use crate::cursor::{Cursor, EncCursor};
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
-use crate::loop_analysis::LoopAnalysis;
+use crate::loop_analysis::{Loop, LoopAnalysis};
 use crate::ir::{Block, Inst, InstBuilder, InstructionData, Value, ValueLoc, types};
 use crate::ir::function::Function;
 use crate::ir::instructions::{BranchInfo, Opcode};
@@ -452,56 +452,129 @@ pub fn do_cfi_set_correct_labels(_func: &mut Function, _isa: &dyn TargetIsa) {
 }
 
 /// Optimize CFI checks in loops to prevent loop iteration serialization
-pub fn do_cfi_loop_optimize(func: &mut Function, isa: &dyn TargetIsa, loop_analysis: &LoopAnalysis) {
+pub fn do_cfi_loop_optimize(func: &mut Function, isa: &dyn TargetIsa, _cfg: &ControlFlowGraph, loop_analysis: &LoopAnalysis) {
     let mut cur = EncCursor::new(func, isa);
 
+    // let cur_func = cranelift_spectre::inst::get_curr_func();
+    // if cur_func.starts_with("guest_func_strlen") || cur_func.starts_with("guest_func_spec_printBranch2") {
+    if should_print() {
+        println!("Function at top of do_cfi_add_checks:\n{}", cur.func.display(isa));
+    }
+
     for lp in loop_analysis.loops() {
-        let header = loop_analysis.loop_header(lp);
-        let block_with_back_edge = header;
-        let back_jump = {
-            cur.goto_last_inst(block_with_back_edge);
-            let last_inst = cur.current_inst().unwrap();
-            cur.prev_inst();
-            let second_to_last_inst = cur.current_inst().unwrap();
-            let mut back_jump = None;
-            for &inst in &[last_inst, second_to_last_inst] {
-                match cur.func.dfg.analyze_branch(inst) {
-                    BranchInfo::SingleDest(dest, _) => {
-                        if loop_analysis.is_in_loop(dest, lp) {
-                            back_jump = Some(inst);
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            back_jump.expect("Failed to find back_jump")
-        };
-        let opcode = cur.func.dfg[back_jump].opcode();
+        let loop_details = get_loop_details(&mut cur, isa, loop_analysis, lp);
+
+        let opcode = cur.func.dfg[loop_details.branch_body].opcode();
         match opcode {
             Opcode::BrzCfi | Opcode::BrnzCfi | Opcode::BrifCfi | Opcode::BrffCfi => {
-                conditional_backward_loop_optimize(&mut cur, back_jump);
+                apply_loopend_opt(&mut cur, loop_details);
+            }
+            Opcode::Jump => {
+                // backwards edge is unconditional
+                // remove_cfi_branch(&mut cur, loop_jump);
             }
             _ => {
-                // backwards edge is unconditional
-                // TODO conditional_forward_loop_optimize
             }
         }
     }
 }
 
-/// Convert loops with a backward edge to prevent loop iteration serialization.
+struct LoopDetails {
+    header_block: Block,
+    body_block: Block,
+    exit_block: Block,
+    branch_body: Inst,
+    branch_exit: Inst,
+    header_before_body: bool,
+}
+fn get_loop_details(cur: &mut EncCursor, isa: &dyn TargetIsa, loop_analysis: &LoopAnalysis, lp: Loop) -> LoopDetails {
+    let header_block = loop_analysis.loop_header(lp);
+
+    cur.goto_last_inst(header_block);
+    let last_inst = cur.current_inst().unwrap();
+    cur.prev_inst();
+    let second_to_last_inst = cur.current_inst().unwrap();
+
+    let (branch_body, branch_exit) =
+        if branch_points_to_loop(cur, loop_analysis, lp, last_inst) {
+            assert!(!branch_points_to_loop(cur, loop_analysis, lp, second_to_last_inst));
+            (last_inst, second_to_last_inst)
+        } else {
+            assert!(branch_points_to_loop(cur, loop_analysis, lp, second_to_last_inst));
+            (second_to_last_inst, last_inst)
+        };
+
+    let body_block = match cur.func.dfg.analyze_branch(branch_body) {
+        BranchInfo::SingleDest(dest, _) => {
+            dest
+        }
+        _ => { panic!("Expected branch") }
+    };
+
+    let exit_block = match cur.func.dfg.analyze_branch(branch_exit) {
+        BranchInfo::SingleDest(dest, _) => {
+            dest
+        }
+        _ => { panic!("Expected branch") }
+    };
+
+    let header_before_body = block_before(cur, isa, header_block, body_block);
+    cur.goto_inst(branch_body);
+    let ret = LoopDetails {
+        header_block,
+        body_block,
+        exit_block,
+        branch_body,
+        branch_exit,
+        header_before_body,
+    };
+    return ret;
+}
+
+fn branch_points_to_loop(cur: &mut EncCursor, loop_analysis: &LoopAnalysis, lp: Loop, inst: Inst) -> bool {
+    let ret = match cur.func.dfg.analyze_branch(inst) {
+        BranchInfo::SingleDest(dest, _) => {
+            loop_analysis.is_in_loop(dest, lp)
+        }
+        _ => { panic!("Expected branch") }
+    };
+    return ret;
+}
+
+fn block_before(cur: &mut EncCursor, isa: &dyn TargetIsa, block_a: Block, block_b: Block) -> bool {
+    let saved_position = cur.position();
+
+    // go to the beginning
+    while cur.prev_block().is_some() {}
+
+    // Check if we see the block_a or block_b first
+    let mut ret = None;
+    while let Some(block) = cur.next_block() {
+        if block == block_a {
+            ret = Some(true);
+            break;
+        } else if block == block_b {
+            ret = Some(false);
+        }
+    }
+
+    cur.set_position(saved_position);
+    return ret.unwrap();
+}
+
+/// Change loop CFI to prevent loop iteration serialization.
 ///
-/// This amounts solely to changing brx_cfi to brx_cfi_loopend and switching the
+/// This amounts solely to changing brx_cfi to brx_cfi_loopend, and switching the
 /// label that was set beforehand (from the fallthrough label, to the branch
 /// label).
 ///
 /// Callers should assume that this function _clobbers_ the cursor position.
-fn conditional_backward_loop_optimize(cur: &mut EncCursor, back_jump: Inst) {
-    cur.goto_inst(back_jump);
+fn apply_loopend_opt(cur: &mut EncCursor, loop_details: LoopDetails) {
+    let branch_body = loop_details.branch_body;
+    cur.goto_inst(branch_body);
 
     let (dest, varargs): (Block, Vec<Value>) = {
-        let brinfo = cur.func.dfg.analyze_branch(back_jump);
+        let brinfo = cur.func.dfg.analyze_branch(branch_body);
         match brinfo {
             BranchInfo::SingleDest(dest, varargs) => {
                 (dest, varargs.to_vec()) // end immutable borrow of cur
@@ -511,35 +584,35 @@ fn conditional_backward_loop_optimize(cur: &mut EncCursor, back_jump: Inst) {
     };
 
     // replace the CFI branch instruction with the corresponding CFI Loopend branch instruction
-    let opcode = cur.func.dfg[back_jump].opcode();
+    let opcode = cur.func.dfg[branch_body].opcode();
     cur.remove_inst();
     match opcode {
         Opcode::BrzCfi => {
-            let condition = cur.func.dfg.inst_args(back_jump)[0];
-            let new_label = cur.func.dfg.inst_args(back_jump)[1];
+            let condition = cur.func.dfg.inst_args(branch_body)[0];
+            let new_label = cur.func.dfg.inst_args(branch_body)[1];
             cur.ins().brz_cfi_loopend(condition, new_label, dest, &varargs[..]);
         }
         Opcode::BrnzCfi => {
-            let condition = cur.func.dfg.inst_args(back_jump)[0];
-            let new_label = cur.func.dfg.inst_args(back_jump)[1];
+            let condition = cur.func.dfg.inst_args(branch_body)[0];
+            let new_label = cur.func.dfg.inst_args(branch_body)[1];
             cur.ins().brnz_cfi_loopend(condition, new_label, dest, &varargs[..]);
         }
         Opcode::BrifCfi => {
-            let condition = match &cur.func.dfg[back_jump] {
+            let condition = match &cur.func.dfg[branch_body] {
                 InstructionData::BranchIcmp /* BranchIntCFI */ { cond, .. } => *cond,
                 idata => panic!("Expected BranchIntCFI, got {:?}", idata),
             };
-            let flags = cur.func.dfg.inst_args(back_jump)[0];
-            let new_label = cur.func.dfg.inst_args(back_jump)[1];
+            let flags = cur.func.dfg.inst_args(branch_body)[0];
+            let new_label = cur.func.dfg.inst_args(branch_body)[1];
             cur.ins().brif_cfi_loopend(condition, flags, new_label, dest, &varargs[..]);
         }
         Opcode::BrffCfi => {
-            let condition = match &cur.func.dfg[back_jump] {
+            let condition = match &cur.func.dfg[branch_body] {
                 InstructionData::BranchFloatCFI { cond, .. } => *cond,
                 idata => panic!("Expected BranchFloatCFI, got {:?}", idata),
             };
-            let flags = cur.func.dfg.inst_args(back_jump)[0];
-            let new_label = cur.func.dfg.inst_args(back_jump)[1];
+            let flags = cur.func.dfg.inst_args(branch_body)[0];
+            let new_label = cur.func.dfg.inst_args(branch_body)[1];
             cur.ins().brff_cfi_loopend(condition, flags, new_label, dest, &varargs[..]);
         }
         _ => {
@@ -548,6 +621,68 @@ fn conditional_backward_loop_optimize(cur: &mut EncCursor, back_jump: Inst) {
     }
 
     // TODO: need to change the label that was set
+}
+
+/// Convert loops with an unconditional forward edge (preceeded by a
+/// conditional forward edge) to prevent loop iteration serialization.
+///
+/// This amounts solely to changing brx_cfi to brx and switching the
+/// label check done on the exit to use the same label as the loop.
+///
+/// Callers should assume that this function _clobbers_ the cursor position.
+fn remove_cfi_branch(cur: &mut EncCursor, forward_jump: Inst) {
+    cur.goto_inst(forward_jump);
+    let forward_exit = cur.prev_inst().unwrap();
+
+    let (dest, varargs): (Block, Vec<Value>) = {
+        let brinfo = cur.func.dfg.analyze_branch(forward_jump);
+        match brinfo {
+            BranchInfo::SingleDest(dest, varargs) => {
+                (dest, varargs.to_vec()) // end immutable borrow of cur
+            }
+            _ => panic!("Expected conditional branch to be a SingleDest"),
+        }
+    };
+
+    let opcode = cur.func.dfg[forward_exit].opcode();
+    cur.remove_inst();
+    match opcode {
+        Opcode::BrzCfi => {
+            let condition = cur.func.dfg.inst_args(forward_jump)[0];
+            // let new_label = cur.func.dfg.inst_args(forward_jump)[1];
+            cur.ins().brz(condition, dest, &varargs[..]);
+        }
+        Opcode::BrnzCfi => {
+            let condition = cur.func.dfg.inst_args(forward_jump)[0];
+            // let new_label = cur.func.dfg.inst_args(forward_jump)[1];
+            cur.ins().brnz(condition, dest, &varargs[..]);
+        }
+        Opcode::BrifCfi => {
+            let condition = match &cur.func.dfg[forward_jump] {
+                InstructionData::BranchIcmp /* BranchIntCFI */ { cond, .. } => *cond,
+                idata => panic!("Expected BranchIntCFI, got {:?}", idata),
+            };
+            let flags = cur.func.dfg.inst_args(forward_jump)[0];
+            // let new_label = cur.func.dfg.inst_args(forward_jump)[1];
+            cur.ins().brif(condition, flags, dest, &varargs[..]);
+        }
+        Opcode::BrffCfi => {
+            let condition = match &cur.func.dfg[forward_jump] {
+                InstructionData::BranchFloatCFI { cond, .. } => *cond,
+                idata => panic!("Expected BranchFloatCFI, got {:?}", idata),
+            };
+            let flags = cur.func.dfg.inst_args(forward_jump)[0];
+            // let new_label = cur.func.dfg.inst_args(forward_jump)[1];
+            cur.ins().brff(condition, flags, dest, &varargs[..]);
+        }
+        _ => {
+            panic!("Expected to find a CFI cond branch opcode, got {:?}", opcode);
+        }
+    }
+
+    // TODO Add a cmov in the branch_exit block
+
+    // TODO: need to change the label at the loopexit target
 }
 
 /// Add CFI top-of-block check instruction to the block.
