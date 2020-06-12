@@ -933,3 +933,105 @@ fn block_terminator_is_uncond_br(cur: &mut EncCursor, block: Block) -> bool {
     cur.set_position(saved_position);
     return ret;
 }
+
+/// For any blocks B that consist of solely an unconditional jump to some
+/// other block C (with the same arguments as B), remove B, and replace any
+/// jumps to B with jumps to C
+pub fn do_remove_redundant_blocks(func: &mut Function, cfg: &mut ControlFlowGraph, isa: &dyn TargetIsa) {
+    let mut cur = EncCursor::new(func, isa);
+
+    // We run this as a fixpoint algorithm because removing blocks interferes
+    // with the cursor's iteration over blocks
+    let mut go_again = true;
+    while go_again {
+        go_again = false;
+        while let Some(block) = cur.next_block() {
+            if count_instructions_in_block(&mut cur, block) != 1 {
+                continue;
+            }
+            if !block_terminator_is_uncond_br(&mut cur, block) {
+                continue;
+            }
+            cur.goto_last_inst(block);
+            let jump = cur.current_inst().unwrap();
+            let block_args = cur.func.dfg.block_params(block);
+            let (jump_dest, jump_args) = match cur.func.dfg.analyze_branch(jump) {
+                BranchInfo::SingleDest(dest, varargs) => (dest, varargs),
+                _ => panic!("Expected a SingleDest"),
+            };
+            if block_args.len() != jump_args.len() {
+                continue;
+            }
+            if block_args.iter().zip(jump_args.iter()).any(|(bv, jv)| bv != jv) {
+                panic!("Block and jump have the same number of args but not identical lists.\n  Block args: {:?}\n  Jump args: {:?}\n", block_args, jump_args);
+            }
+
+            // Replace all jumps to `block` with jumps to `jump_dest` with the same arguments
+            let saved_position = cur.position();
+            let mut pred_blocks = vec![];
+            let mut should_remove = true;
+            for pred in cfg.pred_iter(block) {
+                pred_blocks.push(pred.block);
+                cur.goto_inst(pred.inst);
+                match cur.func.dfg.analyze_branch(pred.inst) {
+                    BranchInfo::SingleDest(dest, args) => {
+                        assert_eq!(dest, block);
+                        let args = args.to_vec(); // end immutable borrow of cur
+                        match cur.func.dfg[pred.inst].opcode() {
+                            Opcode::Jump | Opcode::Fallthrough => {
+                                cur.ins().jump(jump_dest, &args);
+                            }
+                            Opcode::Brnz => {
+                                let value = cur.func.dfg.inst_args(pred.inst)[0];
+                                cur.ins().brnz(value, jump_dest, &args);
+                            }
+                            Opcode::Brz => {
+                                let value = cur.func.dfg.inst_args(pred.inst)[0];
+                                cur.ins().brz(value, jump_dest, &args);
+                            }
+                            Opcode::Brif => {
+                                let condition = match &cur.func.dfg[pred.inst] {
+                                    InstructionData::BranchInt { cond, .. } => *cond,
+                                    idata => panic!("Expected BranchInt, got {:?}", idata),
+                                };
+                                let flags = cur.func.dfg.inst_args(pred.inst)[0];
+                                cur.ins().brif(condition, flags, jump_dest, &args);
+                            }
+                            Opcode::Brff => {
+                                let condition = match &cur.func.dfg[pred.inst] {
+                                    InstructionData::BranchFloat { cond, .. } => *cond,
+                                    idata => panic!("Expected BranchFloat, got {:?}", idata),
+                                };
+                                let flags = cur.func.dfg.inst_args(pred.inst)[0];
+                                cur.ins().brff(condition, flags, jump_dest, &args);
+                            }
+                            opcode => {
+                                unimplemented!("do_remove_redundant_blocks: incoming branch with opcode {:?}", opcode);
+                            }
+                        }
+                        cur.remove_inst();
+                    }
+                    BranchInfo::Table(_jt, _default_block) => {
+                        // We don't handle this for now, so keep the `block` in place.
+                        // We can still have all the other incoming edges bypass it though.
+                        should_remove = false;
+                    }
+                    BranchInfo::NotABranch => panic!("Predecessor should be a branch instruction"),
+                };
+            }
+            cur.set_position(saved_position);
+
+            // Remove `block` altogether now
+            if should_remove {
+                go_again = true;
+                cur.remove_inst();
+                cur.layout_mut().remove_block(block);
+            }
+
+            // Recompute the CFG as necessary so that we have good information when analyzing the next block
+            for pred_block in pred_blocks {
+                cfg.recompute_block(&cur.func, pred_block);
+            }
+        }
+    }
+}

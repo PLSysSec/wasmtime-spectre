@@ -220,6 +220,8 @@ impl Context {
                     self.blade(isa)?;
                 }
                 SpectrePHTMitigation::CFI => {
+                    self.remove_redundant_blocks(isa)?;
+
                     // We also do this before regalloc, because we actually need
                     // regalloc to give us some temps for the new instructions
                     // we're inserting
@@ -503,6 +505,16 @@ impl Context {
         self.verify_if(isa)?;
         self.verify_locations_if(isa)?;
         Ok(info)
+    }
+
+    /// For any blocks B that consist of solely an unconditional jump to some
+    /// other block C (with the same arguments as B), remove B, and replace any
+    /// jumps to B with jumps to C
+    pub fn remove_redundant_blocks(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
+        do_remove_redundant_blocks(&mut self.func, &mut self.cfg, isa);
+        self.compute_cfg();
+        self.compute_domtree();
+        self.verify_if(isa)
     }
 
     /// Perform the Blade pass to insert lfences in appropriate places.
