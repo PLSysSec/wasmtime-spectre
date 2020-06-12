@@ -112,6 +112,36 @@ fn define_control_flow(
 
         ig.push(
             Inst::new(
+                "brz_cfi_loopend",
+                r#"
+        Branch when zero, for CFI, for the special loop-end pattern.
+
+        Comparison with brz_cfi:
+        brz_cfi:
+            <not part of this instruction: set_cfi_label for fallthrough block>
+            test val, val
+            cmovz r14, label
+            brz block
+        brz_cfi_loopend:
+            <not part of this instruction: set_cfi_label for branch destination>
+            test val, val
+            brz block
+            cmovnz r14, label
+
+        In loopend, the cmovz executes only when fallthrough happens.
+        It's optimized for the case where we take the branch.
+
+        If ``c`` is a `b1` value, take the branch when ``c`` is true. If
+        ``c`` is an integer value, take the branch when ``c != 0``.
+        "#,
+                &formats.branch_cfi,
+            )
+            .operands_in(vec![c, cfi_label, block, args])
+            .is_branch(true),
+        );
+
+        ig.push(
+            Inst::new(
                 "brnz",
                 r#"
         Branch when non-zero.
@@ -130,6 +160,36 @@ fn define_control_flow(
                 "brnz_cfi",
                 r#"
         Branch when non-zero, for CFI.
+
+        If ``c`` is a `b1` value, take the branch when ``c`` is true. If
+        ``c`` is an integer value, take the branch when ``c != 0``.
+        "#,
+                &formats.branch_cfi,
+            )
+            .operands_in(vec![c, cfi_label, block, args])
+            .is_branch(true),
+        );
+
+        ig.push(
+            Inst::new(
+                "brnz_cfi_loopend",
+                r#"
+        Branch when non-zero, for CFI, for the special loop-end pattern.
+
+        Comparison with brnz_cfi:
+        brnz_cfi:
+            <not part of this instruction: set_cfi_label for fallthrough block>
+            test val, val
+            cmovnz r14, label
+            brnz block
+        brnz_cfi_loopend:
+            <not part of this instruction: set_cfi_label for branch destination>
+            test val, val
+            brnz block
+            cmovz r14, label
+
+        In loopend, the cmovz executes only when fallthrough happens.
+        It's optimized for the case where we take the branch.
 
         If ``c`` is a `b1` value, take the branch when ``c`` is true. If
         ``c`` is an integer value, take the branch when ``c != 0``.
