@@ -1032,6 +1032,11 @@ pub fn do_remove_redundant_blocks(func: &mut Function, cfg: &mut ControlFlowGrap
             for pred_block in pred_blocks {
                 cfg.recompute_block(&cur.func, pred_block);
             }
+
+            if should_remove {
+                // restart the iteration over blocks, since we removed a block
+                break;
+            }
         }
     }
 }
