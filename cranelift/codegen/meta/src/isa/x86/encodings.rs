@@ -2314,16 +2314,12 @@ fn define_control_flow(
     // Shorthands for instructions.
     let brff = shared.by_name("brff");
     let brff_cfi = shared.by_name("brff_cfi");
-    let brff_cfi_loopend = shared.by_name("brff_cfi_loopend");
     let brif = shared.by_name("brif");
     let brif_cfi = shared.by_name("brif_cfi");
-    let brif_cfi_loopend = shared.by_name("brif_cfi_loopend");
     let brnz = shared.by_name("brnz");
     let brnz_cfi = shared.by_name("brnz_cfi");
-    let brnz_cfi_loopend = shared.by_name("brnz_cfi_loopend");
     let brz = shared.by_name("brz");
     let brz_cfi = shared.by_name("brz_cfi");
-    let brz_cfi_loopend = shared.by_name("brz_cfi_loopend");
     let call = shared.by_name("call");
     let call_indirect = shared.by_name("call_indirect");
     let debugtrap = shared.by_name("debugtrap");
@@ -2341,16 +2337,12 @@ fn define_control_flow(
     // Shorthands for recipes.
     let rec_brfb = r.template("brfb");
     let rec_brfb_cfi = r.template("brfb_cfi");
-    let rec_brfb_cfi_loopend = r.template("brfb_cfi_loopend");
     let rec_brfd = r.template("brfd");
     let rec_brfd_cfi = r.template("brfd_cfi");
-    let rec_brfd_cfi_loopend = r.template("brfd_cfi_loopend");
     let rec_brib = r.template("brib");
     let rec_brib_cfi = r.template("brib_cfi");
-    let rec_brib_cfi_loopend = r.template("brib_cfi_loopend");
     let rec_brid = r.template("brid");
     let rec_brid_cfi = r.template("brid_cfi");
-    let rec_brid_cfi_loopend = r.template("brid_cfi_loopend");
     let rec_call_id = r.template("call_id");
     let rec_call_plt_id = r.template("call_plt_id");
     let rec_call_r = r.template("call_r");
@@ -2364,19 +2356,14 @@ fn define_control_flow(
     let rec_ret = r.template("ret");
     let rec_t8jccb_abcd = r.template("t8jccb_abcd");
     let rec_t8jccb_abcd_cfi = r.template("t8jccb_abcd_cfi");
-    let rec_t8jccb_abcd_cfi_loopend = r.template("t8jccb_abcd_cfi_loopend");
     let rec_t8jccd_abcd = r.template("t8jccd_abcd");
     let rec_t8jccd_abcd_cfi = r.template("t8jccd_abcd_cfi");
-    let rec_t8jccd_abcd_cfi_loopend = r.template("t8jccd_abcd_cfi_loopend");
     let rec_t8jccd_long = r.template("t8jccd_long");
     let rec_t8jccd_long_cfi = r.template("t8jccd_long_cfi");
-    let rec_t8jccd_long_cfi_loopend = r.template("t8jccd_long_cfi_loopend");
     let rec_tjccb = r.template("tjccb");
     let rec_tjccb_cfi = r.template("tjccb_cfi");
-    let rec_tjccb_cfi_loopend = r.template("tjccb_cfi_loopend");
     let rec_tjccd = r.template("tjccd");
     let rec_tjccd_cfi = r.template("tjccd_cfi");
-    let rec_tjccd_cfi_loopend = r.template("tjccd_cfi_loopend");
     let rec_trap = r.template("trap");
     let rec_trapif = r.recipe("trapif");
     let rec_trapff = r.recipe("trapff");
@@ -2422,32 +2409,24 @@ fn define_control_flow(
 
     e.enc_both(brif, rec_brib.opcodes(&JUMP_SHORT_IF_OVERFLOW));
     e.enc_both(brif_cfi, rec_brib_cfi.opcodes(&JUMP_SHORT_IF_OVERFLOW));
-    e.enc_both(brif_cfi_loopend, rec_brib_cfi_loopend.opcodes(&JUMP_SHORT_IF_OVERFLOW));
     e.enc_both(brif, rec_brid.opcodes(&JUMP_NEAR_IF_OVERFLOW));
     e.enc_both(brif_cfi, rec_brid_cfi.opcodes(&JUMP_NEAR_IF_OVERFLOW));
-    e.enc_both(brif_cfi_loopend, rec_brid_cfi_loopend.opcodes(&JUMP_NEAR_IF_OVERFLOW));
 
     // Not all float condition codes are legal, see `supported_floatccs`.
     e.enc_both(brff, rec_brfb.opcodes(&JUMP_SHORT_IF_OVERFLOW));
     e.enc_both(brff_cfi, rec_brfb_cfi.opcodes(&JUMP_SHORT_IF_OVERFLOW));
-    e.enc_both(brff_cfi_loopend, rec_brfb_cfi_loopend.opcodes(&JUMP_SHORT_IF_OVERFLOW));
     e.enc_both(brff, rec_brfd.opcodes(&JUMP_NEAR_IF_OVERFLOW));
     e.enc_both(brff_cfi, rec_brfd_cfi.opcodes(&JUMP_NEAR_IF_OVERFLOW));
-    e.enc_both(brff_cfi_loopend, rec_brfd_cfi_loopend.opcodes(&JUMP_NEAR_IF_OVERFLOW));
 
     // Note that the tjccd opcode will be prefixed with 0x0f.
     e.enc_i32_i64_explicit_rex(brz, rec_tjccb.opcodes(&JUMP_SHORT_IF_EQUAL));
     e.enc_i32_i64_explicit_rex(brz_cfi, rec_tjccb_cfi.opcodes(&JUMP_SHORT_IF_EQUAL));
-    e.enc_i32_i64_explicit_rex(brz_cfi_loopend, rec_tjccb_cfi_loopend.opcodes(&JUMP_SHORT_IF_EQUAL));
     e.enc_i32_i64_explicit_rex(brz, rec_tjccd.opcodes(&TEST_BYTE_REG));
     e.enc_i32_i64_explicit_rex(brz_cfi, rec_tjccd_cfi.opcodes(&TEST_BYTE_REG));
-    e.enc_i32_i64_explicit_rex(brz_cfi_loopend, rec_tjccd_cfi_loopend.opcodes(&TEST_BYTE_REG));
     e.enc_i32_i64_explicit_rex(brnz, rec_tjccb.opcodes(&JUMP_SHORT_IF_NOT_EQUAL));
     e.enc_i32_i64_explicit_rex(brnz_cfi, rec_tjccb_cfi.opcodes(&JUMP_SHORT_IF_NOT_EQUAL));
-    e.enc_i32_i64_explicit_rex(brnz_cfi_loopend, rec_tjccb_cfi_loopend.opcodes(&JUMP_SHORT_IF_NOT_EQUAL));
     e.enc_i32_i64_explicit_rex(brnz, rec_tjccd.opcodes(&TEST_REG));
     e.enc_i32_i64_explicit_rex(brnz_cfi, rec_tjccd_cfi.opcodes(&TEST_REG));
-    e.enc_i32_i64_explicit_rex(brnz_cfi_loopend, rec_tjccd_cfi_loopend.opcodes(&TEST_REG));
 
     // Branch on a b1 value in a register only looks at the low 8 bits. See also
     // bint encodings below.
@@ -2456,17 +2435,13 @@ fn define_control_flow(
     // can't handle a branch with an ABCD-constrained operand.
     e.enc32(brz.bind(B1), rec_t8jccd_long.opcodes(&TEST_BYTE_REG));
     e.enc32(brz_cfi.bind(B1), rec_t8jccd_long_cfi.opcodes(&TEST_BYTE_REG));
-    e.enc32(brz_cfi_loopend.bind(B1), rec_t8jccd_long_cfi_loopend.opcodes(&TEST_BYTE_REG));
     e.enc32(brnz.bind(B1), rec_t8jccd_long.opcodes(&TEST_REG));
     e.enc32(brnz_cfi.bind(B1), rec_t8jccd_long_cfi.opcodes(&TEST_REG));
-    e.enc32(brnz_cfi_loopend.bind(B1), rec_t8jccd_long_cfi_loopend.opcodes(&TEST_REG));
 
     e.enc_both(brz.bind(B1), rec_t8jccb_abcd.opcodes(&JUMP_SHORT_IF_EQUAL));
     e.enc_both(brz_cfi.bind(B1), rec_t8jccb_abcd_cfi.opcodes(&JUMP_SHORT_IF_EQUAL));
-    e.enc_both(brz_cfi_loopend.bind(B1), rec_t8jccb_abcd_cfi_loopend.opcodes(&JUMP_SHORT_IF_EQUAL));
     e.enc_both(brz.bind(B1), rec_t8jccd_abcd.opcodes(&TEST_BYTE_REG));
     e.enc_both(brz_cfi.bind(B1), rec_t8jccd_abcd_cfi.opcodes(&TEST_BYTE_REG));
-    e.enc_both(brz_cfi_loopend.bind(B1), rec_t8jccd_abcd_cfi_loopend.opcodes(&TEST_BYTE_REG));
     e.enc_both(
         brnz.bind(B1),
         rec_t8jccb_abcd.opcodes(&JUMP_SHORT_IF_NOT_EQUAL),
@@ -2475,13 +2450,8 @@ fn define_control_flow(
         brnz_cfi.bind(B1),
         rec_t8jccb_abcd_cfi.opcodes(&JUMP_SHORT_IF_NOT_EQUAL),
     );
-    e.enc_both(
-        brnz_cfi_loopend.bind(B1),
-        rec_t8jccb_abcd_cfi_loopend.opcodes(&JUMP_SHORT_IF_NOT_EQUAL),
-    );
     e.enc_both(brnz.bind(B1), rec_t8jccd_abcd.opcodes(&TEST_REG));
     e.enc_both(brnz_cfi.bind(B1), rec_t8jccd_abcd_cfi.opcodes(&TEST_REG));
-    e.enc_both(brnz_cfi_loopend.bind(B1), rec_t8jccd_abcd_cfi_loopend.opcodes(&TEST_REG));
 
     // Jump tables.
     e.enc64(

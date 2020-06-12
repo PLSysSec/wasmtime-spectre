@@ -2545,43 +2545,6 @@ pub(crate) fn define<'shared>(
     );
 
     recipes.add_template_recipe(
-        EncodingRecipeBuilder::new("brib_cfi_loopend", &formats.branch_icmp /* branch_int_cfi */, 1 + CMOV_SIZE)
-            .operands_in(vec![
-                OperandConstraint::FixedReg(reg_rflags),
-                OperandConstraint::RegClass(gpr),
-            ])
-            .branch_range((1 + CMOV_SIZE, 8))
-            .clobbers_flags(false)
-            .emit(
-                r#"
-                    // Actual branch instruction
-                    {{PUT_OP}}(bits | icc2opc(cond), BASE_REX, sink);
-                    disp1(destination, func, sink);
-
-                    // cmov[inverted] r14, new_label
-                    use cranelift_spectre::inst::*;
-                    use crate::ir::condcodes::IntCC;
-                    let cmov_bytes = match cond.unsigned() {
-                        // Condition is inverted.
-                        // LHS and RHS do not match up
-                        IntCC::NotEqual => { get_cmove(R_R14, in_reg1) },
-                        IntCC::Equal => { get_cmovne(R_R14, in_reg1) },
-                        IntCC::UnsignedGreaterThan => { get_cmovb(R_R14, in_reg1) },
-                        IntCC::UnsignedLessThanOrEqual => { get_cmovae(R_R14, in_reg1) },
-                        IntCC::UnsignedLessThan => { get_cmova(R_R14, in_reg1) },
-                        IntCC::UnsignedGreaterThanOrEqual => { get_cmovbe(R_R14, in_reg1) },
-                        IntCC::NotOverflow => { get_cmovo(R_R14, in_reg1) },
-                        IntCC::Overflow => { get_cmovno(R_R14, in_reg1) },
-                        _ => {
-                            unimplemented!("Condition code {:?}", cond)
-                        }
-                    };
-                    cmov_bytes.iter().for_each(|&b| sink.put1(b));
-                "#,
-            ),
-    );
-
-    recipes.add_template_recipe(
         EncodingRecipeBuilder::new("brid", &formats.branch_int, 4)
             .operands_in(vec![reg_rflags])
             .branch_range((4, 32))
@@ -2625,43 +2588,6 @@ pub(crate) fn define<'shared>(
                     // Actual branch instruction
                     {{PUT_OP}}(bits | icc2opc(cond), BASE_REX, sink);
                     disp4(destination, func, sink);
-                "#,
-            ),
-    );
-
-    recipes.add_template_recipe(
-        EncodingRecipeBuilder::new("brid_cfi_loopend", &formats.branch_icmp /* branch_int_cfi */, 4 + CMOV_SIZE)
-            .operands_in(vec![
-                OperandConstraint::FixedReg(reg_rflags),
-                OperandConstraint::RegClass(gpr),
-            ])
-            .branch_range((4 + CMOV_SIZE, 32))
-            .clobbers_flags(false)
-            .emit(
-                r#"
-                    // Actual branch instruction
-                    {{PUT_OP}}(bits | icc2opc(cond), BASE_REX, sink);
-                    disp4(destination, func, sink);
-
-                    // cmov[inverted] r14, new_label
-                    use cranelift_spectre::inst::*;
-                    use crate::ir::condcodes::IntCC;
-                    let cmov_bytes = match cond.unsigned() {
-                        // Condition is inverted.
-                        // LHS and RHS do not match up
-                        IntCC::NotEqual => { get_cmove(R_R14, in_reg1) },
-                        IntCC::Equal => { get_cmovne(R_R14, in_reg1) },
-                        IntCC::UnsignedGreaterThan => { get_cmovb(R_R14, in_reg1) },
-                        IntCC::UnsignedLessThanOrEqual => { get_cmovae(R_R14, in_reg1) },
-                        IntCC::UnsignedLessThan => { get_cmova(R_R14, in_reg1) },
-                        IntCC::UnsignedGreaterThanOrEqual => { get_cmovbe(R_R14, in_reg1) },
-                        IntCC::NotOverflow => { get_cmovo(R_R14, in_reg1) },
-                        IntCC::Overflow => { get_cmovno(R_R14, in_reg1) },
-                        _ => {
-                            unimplemented!("Condition code {:?}", cond)
-                        }
-                    };
-                    cmov_bytes.iter().for_each(|&b| sink.put1(b));
                 "#,
             ),
     );
@@ -2726,50 +2652,6 @@ pub(crate) fn define<'shared>(
     );
 
     recipes.add_template_recipe(
-        EncodingRecipeBuilder::new("brfb_cfi_loopend", &formats.branch_float_cfi, 1 + CMOV_SIZE)
-            .operands_in(vec![
-                OperandConstraint::FixedReg(reg_rflags),
-                OperandConstraint::RegClass(gpr),
-            ])
-            .branch_range((1 + CMOV_SIZE, 8))
-            .clobbers_flags(false)
-            .inst_predicate(supported_floatccs_predicate(
-                &supported_floatccs,
-                &*formats.branch_float_cfi,
-            ))
-            .emit(
-                r#"
-                    // Actual branch instruction
-                    {{PUT_OP}}(bits | fcc2opc(cond), BASE_REX, sink);
-                    disp1(destination, func, sink);
-
-                    // cmov[inverted] r14, new_label
-                    use cranelift_spectre::inst::*;
-                    use crate::ir::condcodes::FloatCC;
-                    let cmov_bytes = match cond {
-                        // Condition is inverted.
-                        // LHS and RHS do not match up
-                        FloatCC::Ordered => { get_cmovp(R_R14, in_reg1) },
-                        FloatCC::Unordered => { get_cmovnp(R_R14, in_reg1) },
-                        FloatCC::Equal => { get_cmovne(R_R14, in_reg1) },
-                        FloatCC::NotEqual => { get_cmove(R_R14, in_reg1) },
-                        FloatCC::OrderedNotEqual => { get_cmove(R_R14, in_reg1) },
-                        FloatCC::UnorderedOrEqual => { get_cmovne(R_R14, in_reg1) },
-                        FloatCC::LessThan => { get_cmovae(R_R14, in_reg1) },
-                        FloatCC::LessThanOrEqual => { get_cmova(R_R14, in_reg1) },
-                        FloatCC::GreaterThan => { get_cmovbe(R_R14, in_reg1) },
-                        FloatCC::GreaterThanOrEqual => { get_cmovb(R_R14, in_reg1) },
-                        FloatCC::UnorderedOrLessThan => { get_cmovae(R_R14, in_reg1) },
-                        FloatCC::UnorderedOrLessThanOrEqual => { get_cmova(R_R14, in_reg1) },
-                        FloatCC::UnorderedOrGreaterThan => { get_cmovbe(R_R14, in_reg1) },
-                        FloatCC::UnorderedOrGreaterThanOrEqual => { get_cmovb(R_R14, in_reg1) },
-                    };
-                    cmov_bytes.iter().for_each(|&b| sink.put1(b));
-                "#,
-            ),
-    );
-
-    recipes.add_template_recipe(
         EncodingRecipeBuilder::new("brfd", &formats.branch_float, 4)
             .operands_in(vec![reg_rflags])
             .branch_range((4, 32))
@@ -2823,50 +2705,6 @@ pub(crate) fn define<'shared>(
 
                     {{PUT_OP}}(bits | fcc2opc(cond), BASE_REX, sink);
                     disp4(destination, func, sink);
-                "#,
-            ),
-    );
-
-    recipes.add_template_recipe(
-        EncodingRecipeBuilder::new("brfd_cfi_loopend", &formats.branch_float_cfi, 4 + CMOV_SIZE)
-            .operands_in(vec![
-                OperandConstraint::FixedReg(reg_rflags),
-                OperandConstraint::RegClass(gpr),
-            ])
-            .branch_range((4 + CMOV_SIZE, 32))
-            .clobbers_flags(false)
-            .inst_predicate(supported_floatccs_predicate(
-                &supported_floatccs,
-                &*formats.branch_float_cfi,
-            ))
-            .emit(
-                r#"
-                    // Actual branch instruction
-                    {{PUT_OP}}(bits | fcc2opc(cond), BASE_REX, sink);
-                    disp4(destination, func, sink);
-
-                    // cmov[inverted] r14, new_label
-                    use cranelift_spectre::inst::*;
-                    use crate::ir::condcodes::FloatCC;
-                    let cmov_bytes = match cond {
-                        // Condition is inverted.
-                        // LHS and RHS do not match up
-                        FloatCC::Ordered => { get_cmovp(R_R14, in_reg1) },
-                        FloatCC::Unordered => { get_cmovnp(R_R14, in_reg1) },
-                        FloatCC::Equal => { get_cmovne(R_R14, in_reg1) },
-                        FloatCC::NotEqual => { get_cmove(R_R14, in_reg1) },
-                        FloatCC::OrderedNotEqual => { get_cmove(R_R14, in_reg1) },
-                        FloatCC::UnorderedOrEqual => { get_cmovne(R_R14, in_reg1) },
-                        FloatCC::LessThan => { get_cmovae(R_R14, in_reg1) },
-                        FloatCC::LessThanOrEqual => { get_cmova(R_R14, in_reg1) },
-                        FloatCC::GreaterThan => { get_cmovbe(R_R14, in_reg1) },
-                        FloatCC::GreaterThanOrEqual => { get_cmovb(R_R14, in_reg1) },
-                        FloatCC::UnorderedOrLessThan => { get_cmovae(R_R14, in_reg1) },
-                        FloatCC::UnorderedOrLessThanOrEqual => { get_cmova(R_R14, in_reg1) },
-                        FloatCC::UnorderedOrGreaterThan => { get_cmovbe(R_R14, in_reg1) },
-                        FloatCC::UnorderedOrGreaterThanOrEqual => { get_cmovb(R_R14, in_reg1) },
-                    };
-                    cmov_bytes.iter().for_each(|&b| sink.put1(b));
                 "#,
             ),
     );
@@ -3390,38 +3228,6 @@ pub(crate) fn define<'shared>(
 
     recipes.add_template(
         Template::new(
-            EncodingRecipeBuilder::new("tjccb_cfi_loopend", &formats.branch_cfi, 1 + 2 + CMOV_SIZE)
-                .operands_in(vec![gpr, gpr])
-                .branch_range((3 + CMOV_SIZE, 8))
-                .emit(
-                    r#"
-                        // test r, r.
-                        {{PUT_OP}}((bits & 0xff00) | 0x85, rex2(in_reg0, in_reg0), sink);
-                        modrm_rr(in_reg0, in_reg0, sink);
-
-                        // Jcc instruction.
-                        sink.put1(bits as u8);
-                        disp1(destination, func, sink);
-
-                        // cmov~cc r14, in_reg1
-                        use cranelift_spectre::inst::R_R14;
-                        let bytes = match bits & 0x0f {
-                            // condition is inverted
-                            0x5 => cranelift_spectre::inst::get_cmovz(R_R14, in_reg1),
-                            0x4 => cranelift_spectre::inst::get_cmovnz(R_R14, in_reg1),
-                            other => panic!("Unexpected condition code: {:?}", other),
-                        };
-                        bytes.iter().for_each(|&b| sink.put1(b));
-
-                    "#,
-                ),
-            regs,
-        )
-        .inferred_rex_compute_size("size_with_inferred_rex_for_inreg0"),
-    );
-
-    recipes.add_template(
-        Template::new(
             EncodingRecipeBuilder::new("tjccd", &formats.branch, 1 + 6)
                 .operands_in(vec![gpr])
                 .branch_range((7, 32))
@@ -3465,39 +3271,6 @@ pub(crate) fn define<'shared>(
                         sink.put1(0x0f);
                         sink.put1(bits as u8);
                         disp4(destination, func, sink);
-                    "#,
-                ),
-            regs,
-        )
-        .inferred_rex_compute_size("size_with_inferred_rex_for_inreg0"),
-    );
-
-   recipes.add_template(
-        Template::new(
-            EncodingRecipeBuilder::new("tjccd_cfi_loopend", &formats.branch_cfi, 1 + 6 + CMOV_SIZE)
-                .operands_in(vec![gpr, gpr])
-                .branch_range((7 + CMOV_SIZE, 32))
-                .emit(
-                    r#"
-                        // test r, r.
-                        {{PUT_OP}}((bits & 0xff00) | 0x85, rex2(in_reg0, in_reg0), sink);
-                        modrm_rr(in_reg0, in_reg0, sink);
-
-                        // Jcc instruction.
-                        sink.put1(0x0f);
-                        sink.put1(bits as u8);
-                        disp4(destination, func, sink);
-
-                        // cmov~cc r14, in_reg1
-                        use cranelift_spectre::inst::R_R14;
-                        let bytes = match bits & 0x0f {
-                            // Condition is inverted.
-                            0x5 => cranelift_spectre::inst::get_cmovz(R_R14, in_reg1),
-                            0x4 => cranelift_spectre::inst::get_cmovnz(R_R14, in_reg1),
-                            other => panic!("Unexpected condition code: {:?}", other),
-                        };
-                        bytes.iter().for_each(|&b| sink.put1(b));
-
                     "#,
                 ),
             regs,
@@ -3557,37 +3330,6 @@ pub(crate) fn define<'shared>(
         .rex_kind(RecipePrefixKind::AlwaysEmitRex),
     );
 
-    let t8jccb_cfi_loopend = recipes.add_template(
-        Template::new(
-            EncodingRecipeBuilder::new("t8jccb_cfi_loopend", &formats.branch_cfi, 1 + 2 + CMOV_SIZE)
-                .operands_in(vec![gpr, gpr])
-                .branch_range((3 + CMOV_SIZE, 8))
-                .emit(
-                    r#"
-                    // test8 r, r.
-                    {{PUT_OP}}((bits & 0xff00) | 0x84, rex2(in_reg0, in_reg0), sink);
-                    modrm_rr(in_reg0, in_reg0, sink);
-
-                    // Jcc instruction.
-                    sink.put1(bits as u8);
-                    disp1(destination, func, sink);
-
-                    // cmov~cc r14, in_reg1
-                    use cranelift_spectre::inst::R_R14;
-                    let bytes = match bits & 0x0f {
-                        // Condition is inverted.
-                        0x5 => cranelift_spectre::inst::get_cmovz(R_R14, in_reg1),
-                        0x4 => cranelift_spectre::inst::get_cmovnz(R_R14, in_reg1),
-                        other => panic!("Unexpected condition code: {:?}", other),
-                    };
-                    bytes.iter().for_each(|&b| sink.put1(b));
-                "#,
-                ),
-            regs,
-        )
-        .rex_kind(RecipePrefixKind::AlwaysEmitRex),
-    );
-
     recipes.add_template(
         Template::new(
             EncodingRecipeBuilder::new("t8jccb_abcd", &formats.branch, 1 + 2)
@@ -3638,37 +3380,6 @@ pub(crate) fn define<'shared>(
         .when_prefixed(t8jccb_cfi),
     );
 
-   recipes.add_template(
-        Template::new(
-            EncodingRecipeBuilder::new("t8jccb_abcd_cfi_loopend", &formats.branch_cfi, 1 + 2 + CMOV_SIZE)
-                .operands_in(vec![abcd, gpr])
-                .branch_range((3 + CMOV_SIZE, 8))
-                .emit(
-                    r#"
-                    // test8 r, r.
-                    {{PUT_OP}}((bits & 0xff00) | 0x84, rex2(in_reg0, in_reg0), sink);
-                    modrm_rr(in_reg0, in_reg0, sink);
-
-                    // Jcc instruction.
-                    sink.put1(bits as u8);
-                    disp1(destination, func, sink);
-
-                    // cmov~cc r14, in_reg1
-                    use cranelift_spectre::inst::R_R14;
-                    let bytes = match bits & 0x0f {
-                        // Condition is inverted.
-                        0x5 => cranelift_spectre::inst::get_cmovz(R_R14, in_reg1),
-                        0x4 => cranelift_spectre::inst::get_cmovnz(R_R14, in_reg1),
-                        other => panic!("Unexpected condition code: {:?}", other),
-                    };
-                    bytes.iter().for_each(|&b| sink.put1(b));
-                "#,
-                ),
-            regs,
-        )
-        .when_prefixed(t8jccb_cfi_loopend),
-    );
-
     let t8jccd = recipes.add_template(
         Template::new(
             EncodingRecipeBuilder::new("t8jccd", &formats.branch, 1 + 6)
@@ -3714,38 +3425,6 @@ pub(crate) fn define<'shared>(
                     sink.put1(0x0f);
                     sink.put1(bits as u8);
                     disp4(destination, func, sink);
-                "#,
-                ),
-            regs,
-        )
-        .rex_kind(RecipePrefixKind::AlwaysEmitRex),
-    );
-
-    let t8jccd_cfi_loopend = recipes.add_template(
-        Template::new(
-            EncodingRecipeBuilder::new("t8jccd_cfi_loopend", &formats.branch_cfi, 1 + 6 + CMOV_SIZE)
-                .operands_in(vec![gpr, gpr])
-                .branch_range((7 + CMOV_SIZE, 32))
-                .emit(
-                    r#"
-                    // test8 r, r.
-                    {{PUT_OP}}((bits & 0xff00) | 0x84, rex2(in_reg0, in_reg0), sink);
-                    modrm_rr(in_reg0, in_reg0, sink);
-
-                    // Jcc instruction.
-                    sink.put1(0x0f);
-                    sink.put1(bits as u8);
-                    disp4(destination, func, sink);
-
-                    // cmov~cc r14, in_reg1
-                    use cranelift_spectre::inst::R_R14;
-                    let bytes = match bits & 0x0f {
-                        // Condition is inverted.
-                        0x5 => cranelift_spectre::inst::get_cmovz(R_R14, in_reg1),
-                        0x4 => cranelift_spectre::inst::get_cmovnz(R_R14, in_reg1),
-                        other => panic!("Unexpected condition code: {:?}", other),
-                    };
-                    bytes.iter().for_each(|&b| sink.put1(b));
                 "#,
                 ),
             regs,
@@ -3805,38 +3484,6 @@ pub(crate) fn define<'shared>(
         .when_prefixed(t8jccd_cfi),
     );
 
-    recipes.add_template(
-        Template::new(
-            EncodingRecipeBuilder::new("t8jccd_abcd_cfi_loopend", &formats.branch_cfi, 1 + 6 + CMOV_SIZE)
-                .operands_in(vec![abcd, gpr])
-                .branch_range((7 + CMOV_SIZE, 32))
-                .emit(
-                    r#"
-                    // test8 r, r.
-                    {{PUT_OP}}((bits & 0xff00) | 0x84, rex2(in_reg0, in_reg0), sink);
-                    modrm_rr(in_reg0, in_reg0, sink);
-
-                    // Jcc instruction.
-                    sink.put1(0x0f);
-                    sink.put1(bits as u8);
-                    disp4(destination, func, sink);
-
-                    // cmov~cc r14, in_reg1
-                    use cranelift_spectre::inst::R_R14;
-                    let bytes = match bits & 0x0f {
-                        // Condition is inverted.
-                        0x5 => cranelift_spectre::inst::get_cmovz(R_R14, in_reg1),
-                        0x4 => cranelift_spectre::inst::get_cmovnz(R_R14, in_reg1),
-                        other => panic!("Unexpected condition code: {:?}", other),
-                    };
-                    bytes.iter().for_each(|&b| sink.put1(b));
-                "#,
-                ),
-            regs,
-        )
-        .when_prefixed(t8jccd_cfi_loopend),
-    );
-
     // Worst case test-and-branch recipe for brz.b1 and brnz.b1 in 32-bit mode.
     // The register allocator can't handle a branch instruction with constrained
     // operands like the t8jccd_abcd above. This variant can accept the b1 operand in
@@ -3885,35 +3532,6 @@ pub(crate) fn define<'shared>(
                     sink.put1(0x0f);
                     sink.put1(bits as u8);
                     disp4(destination, func, sink);
-                "#,
-            ),
-    );
-
-    recipes.add_template_recipe(
-        EncodingRecipeBuilder::new("t8jccd_long_cfi_loopend", &formats.branch_cfi, 5 + 6 + CMOV_SIZE)
-            .operands_in(vec![gpr, gpr])
-            .branch_range((11 + CMOV_SIZE, 32))
-            .emit(
-                r#"
-                    // test32 r, 0xff.
-                    {{PUT_OP}}((bits & 0xff00) | 0xf7, rex1(in_reg0), sink);
-                    modrm_r_bits(in_reg0, bits, sink);
-                    sink.put4(0xff);
-
-                    // Jcc instruction.
-                    sink.put1(0x0f);
-                    sink.put1(bits as u8);
-                    disp4(destination, func, sink);
-
-                    // cmov~cc r14, in_reg1
-                    use cranelift_spectre::inst::R_R14;
-                    let bytes = match bits & 0x0f {
-                        // Condition is inverted.
-                        0x5 => cranelift_spectre::inst::get_cmovz(R_R14, in_reg1),
-                        0x4 => cranelift_spectre::inst::get_cmovnz(R_R14, in_reg1),
-                        other => panic!("Unexpected condition code: {:?}", other),
-                    };
-                    bytes.iter().for_each(|&b| sink.put1(b));
                 "#,
             ),
     );
