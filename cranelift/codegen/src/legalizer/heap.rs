@@ -145,8 +145,10 @@ fn static_addr(
     if offset_ty != ir::types::I32 || limit < 0xffff_ffff {
         let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
 
-        if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
-            panic!("SFI spectre protection scheme only supports 4GB heaps with 4GB guard pages.");
+        if !(mitigation == cranelift_spectre::settings::SpectreMitigation::NONE
+            || mitigation == cranelift_spectre::settings::SpectreMitigation::STRAWMAN
+            || mitigation == cranelift_spectre::settings::SpectreMitigation::LOADLFENCE) {
+            panic!("Only strawman loadlfence spectre mitigations can use configs apart from 4GB heaps with 4GB guard pages.");
         }
         let oob = if limit & 1 == 1 {
             // Prefer testing `offset >= limit - 1` when limit is odd because an even number is

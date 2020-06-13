@@ -219,7 +219,7 @@ impl Context {
                     // spill-unspill and insert a fence somewhere in the chain.
                     self.blade(isa)?;
                 }
-                SpectrePHTMitigation::CFI => {
+                SpectrePHTMitigation::INTERLOCK => {
                     self.remove_redundant_blocks(isa)?;
 
                     // We also do this before regalloc, because we actually need

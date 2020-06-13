@@ -396,7 +396,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let val = state.pop1();
 
             let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
-            let mut data = if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
+            let mut data = if cranelift_spectre::settings::get_use_linear_block(mitigation) {
                 JumpTableData::with_capacity(depths.len().next_power_of_two())
             } else {
                 JumpTableData::with_capacity(depths.len())
@@ -412,7 +412,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
                     };
                     data.push_entry(block);
                 }
-                if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
+                if cranelift_spectre::settings::get_use_linear_block(mitigation) {
                     // Duplicate the last entry in to the jump table until it is a power of 2
                     for _i in depths.len()..depths.len().next_power_of_two() {
                         let depth = depths[depths.len() - 1];

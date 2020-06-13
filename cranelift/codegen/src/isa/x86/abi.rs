@@ -359,7 +359,7 @@ pub fn allocatable_registers(triple: &Triple, flags: &shared_settings::Flags) ->
         }
 
         if cranelift_spectre::settings::get_spectre_pht_mitigation()
-            == cranelift_spectre::settings::SpectrePHTMitigation::CFI
+            == cranelift_spectre::settings::SpectrePHTMitigation::INTERLOCK
         {
             regs.take(GPR, RU::r14 as RegUnit);
         }
@@ -775,7 +775,7 @@ fn insert_common_prologue(
             };
 
             use cranelift_spectre::settings::*;
-            if get_spectre_pht_mitigation() == SpectrePHTMitigation::CFI {
+            if get_spectre_pht_mitigation() == SpectrePHTMitigation::INTERLOCK {
                 let saved_position = pos.position();
                 pos.goto_inst(call);
                 pos.ins().set_cfi_label(crate::cfi::PROBE_STACK_LABEL as i64);

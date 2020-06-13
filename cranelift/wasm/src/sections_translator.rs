@@ -170,12 +170,12 @@ pub fn parse_table_section(
 
     for entry in tables {
         let table = entry?;
-        let min = if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
+        let min = if cranelift_spectre::settings::get_use_linear_block(mitigation) {
             table.limits.initial.next_power_of_two()
         } else {
             table.limits.initial
         };
-        let max = if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
+        let max = if cranelift_spectre::settings::get_use_linear_block(mitigation) {
             table.limits.maximum.map(|v| v.next_power_of_two())
         } else {
             table.limits.maximum

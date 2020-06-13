@@ -3,20 +3,20 @@ use num_derive::FromPrimitive;
 #[derive(Clone)]
 pub struct SpectreSettings {
     pub spectre_mitigation: SpectreMitigation,
+    pub spectre_stop_sbx_breakout: bool,
+    pub spectre_stop_sbx_poisoning: bool,
+    pub spectre_stop_host_poisoning: bool,
     pub spectre_pht_mitigation: SpectrePHTMitigation,
-    pub spectre_only_sandbox_isolation: bool,
-    pub spectre_no_cross_sbx_attacks: bool,
-    pub spectre_disable_core_switching: bool,
     pub spectre_disable_btbflush: bool,
 }
 
 static mut SPECTRE_SETTINGS: SpectreSettings = SpectreSettings {
     spectre_mitigation: SpectreMitigation::NONE,
+    spectre_stop_sbx_breakout: false,
+    spectre_stop_sbx_poisoning: false,
+    spectre_stop_host_poisoning: false,
     spectre_pht_mitigation: SpectrePHTMitigation::NONE,
-    spectre_only_sandbox_isolation: false,
-    spectre_no_cross_sbx_attacks: false,
-    spectre_disable_core_switching: false,
-    spectre_disable_btbflush: false,
+    spectre_disable_btbflush: true,
 };
 
 #[derive(PartialEq, Debug, Clone, Copy, FromPrimitive)]
@@ -26,6 +26,7 @@ pub enum SpectreMitigation {
     STRAWMAN,
     SFI,
     CET,
+    SFIASLR,
 }
 
 #[derive(PartialEq, Debug, Clone, Copy, FromPrimitive)]
@@ -33,49 +34,46 @@ pub enum SpectrePHTMitigation {
     NONE,
     BLADE,
     PHTTOBTB,
-    CFI,
+    INTERLOCK,
 }
 
 pub fn get_default_pht_protection(
-    spectre_mitigation: Option<SpectreMitigation>,
-    spectre_only_sandbox_isolation: bool,
-    spectre_no_cross_sbx_attacks: bool,
-) -> Option<SpectrePHTMitigation> {
-    if spectre_mitigation.is_none() || spectre_only_sandbox_isolation || spectre_no_cross_sbx_attacks {
-        return Some(SpectrePHTMitigation::NONE);
+    spectre_mitigation: SpectreMitigation,
+    _spectre_stop_sbx_breakout: bool,
+    spectre_stop_sbx_poisoning: bool,
+    spectre_stop_host_poisoning: bool,
+) -> SpectrePHTMitigation {
+    if spectre_mitigation == SpectreMitigation::SFI && (spectre_stop_sbx_poisoning || spectre_stop_host_poisoning)
+    {
+        return SpectrePHTMitigation::PHTTOBTB;
+    }
+    else if spectre_mitigation == SpectreMitigation::CET && spectre_stop_sbx_poisoning
+    {
+        return SpectrePHTMitigation::INTERLOCK;
     }
 
-    let spectre_mitigation = spectre_mitigation.unwrap();
-    if spectre_mitigation == SpectreMitigation::SFI
-    {
-        return Some(SpectrePHTMitigation::PHTTOBTB);
-    }
-    else if spectre_mitigation == SpectreMitigation::CET
-    {
-        return Some(SpectrePHTMitigation::BLADE);
-    }
-
-    return Some(SpectrePHTMitigation::NONE);
+    return SpectrePHTMitigation::NONE;
 }
 
+pub fn get_use_linear_block(spectre_mitigation: SpectreMitigation) -> bool {
+    spectre_mitigation == SpectreMitigation::SFI || spectre_mitigation == SpectreMitigation::CET || spectre_mitigation == SpectreMitigation::SFIASLR
+}
 
 pub fn use_spectre_mitigation_settings(
-    spectre_mitigation: Option<SpectreMitigation>,
-    spectre_pht_mitigation: Option<SpectrePHTMitigation>,
-    spectre_only_sandbox_isolation: bool,
-    spectre_no_cross_sbx_attacks: bool,
-    spectre_disable_core_switching: bool,
+    spectre_mitigation: SpectreMitigation,
+    spectre_stop_sbx_breakout: bool,
+    spectre_stop_sbx_poisoning: bool,
+    spectre_stop_host_poisoning: bool,
+    spectre_pht_mitigation: SpectrePHTMitigation,
     spectre_disable_btbflush: bool,
 ) {
-    let spectre_mitigation = spectre_mitigation.unwrap_or(get_spectre_mitigation());
-    let spectre_pht_mitigation = spectre_pht_mitigation.unwrap_or(get_spectre_pht_mitigation());
     unsafe {
         SPECTRE_SETTINGS = SpectreSettings {
             spectre_mitigation,
+            spectre_stop_sbx_breakout,
+            spectre_stop_sbx_poisoning,
+            spectre_stop_host_poisoning,
             spectre_pht_mitigation,
-            spectre_only_sandbox_isolation,
-            spectre_no_cross_sbx_attacks,
-            spectre_disable_core_switching,
             spectre_disable_btbflush,
         };
     }
@@ -89,30 +87,28 @@ pub fn get_spectre_mitigation() -> SpectreMitigation {
 }
 
 #[inline(always)]
+pub fn get_spectre_stop_sbx_breakout() -> bool {
+    unsafe {
+        return SPECTRE_SETTINGS.spectre_stop_sbx_breakout.clone();
+    }
+}
+#[inline(always)]
+pub fn get_spectre_stop_sbx_poisoning() -> bool {
+    unsafe {
+        return SPECTRE_SETTINGS.spectre_stop_sbx_poisoning.clone();
+    }
+}
+#[inline(always)]
+pub fn get_spectre_stop_host_poisoning() -> bool {
+    unsafe {
+        return SPECTRE_SETTINGS.spectre_stop_host_poisoning.clone();
+    }
+}
+
+#[inline(always)]
 pub fn get_spectre_pht_mitigation() -> SpectrePHTMitigation {
     unsafe {
         return SPECTRE_SETTINGS.spectre_pht_mitigation.clone();
-    }
-}
-
-#[inline(always)]
-pub fn get_spectre_only_sandbox_isolation() -> bool {
-    unsafe {
-        return SPECTRE_SETTINGS.spectre_only_sandbox_isolation.clone();
-    }
-}
-
-#[inline(always)]
-pub fn get_spectre_no_cross_sbx_attacks() -> bool {
-    unsafe {
-        return SPECTRE_SETTINGS.spectre_no_cross_sbx_attacks.clone();
-    }
-}
-
-#[inline(always)]
-pub fn get_spectre_disable_core_switching() -> bool {
-    unsafe {
-        return SPECTRE_SETTINGS.spectre_disable_core_switching.clone();
     }
 }
 

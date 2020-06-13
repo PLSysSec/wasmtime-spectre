@@ -381,10 +381,10 @@ fn expand_br_table_jt(
     let table_size = pos.func.jump_tables[table].len() as i64;
     let mitigation = get_spectre_mitigation();
 
-    if mitigation == SpectreMitigation::SFI {
+    if cranelift_spectre::settings::get_use_linear_block(mitigation) {
         if !((table_size as u64).is_power_of_two()) {
-            // SFI scheme guarantees through changes elsewhere that callback tables are always powers of 2
-            panic!("Spectre SFI scheme failure. Expected power of 2 for jump table");
+            // Spectre scheme guarantees through changes elsewhere that callback tables are always powers of 2
+            panic!("Spectre scheme failure. Expected power of 2 for jump table");
         }
     }
 
@@ -407,11 +407,11 @@ fn expand_br_table_jt(
         pos.ins().uextend(addr_ty, arg)
     };
 
-    if mitigation == SpectreMitigation::SFI {
+    if cranelift_spectre::settings::get_use_linear_block(mitigation) {
         arg = pos.ins().band_imm(arg, table_size - 1);
     }
 
-    let jump_table_entry_size_bytes = if get_spectre_pht_mitigation() == SpectrePHTMitigation::CFI {
+    let jump_table_entry_size_bytes = if get_spectre_pht_mitigation() == SpectrePHTMitigation::INTERLOCK {
         4 + 4 // 4 for the offset, 4 for the CFI label
     } else {
         4
@@ -433,7 +433,6 @@ fn expand_br_table_jt(
         let ebbs = pos.func.jump_tables[table].clone();
         for ebb in ebbs.iter_blocks() {
             pos.func.block_endbranch[ebb] = true;
-            pos.func.block_lfence[ebb] = true;
         }
     }
 }

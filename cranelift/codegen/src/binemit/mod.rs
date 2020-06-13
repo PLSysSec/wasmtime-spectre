@@ -224,7 +224,7 @@ where
         for &(block, label) in jt_data.iter() {
             let rel_offset: i32 = func.offsets[block] as i32 - jt_offset as i32;
             sink.put4(rel_offset as u32);
-            if mitigation == SpectrePHTMitigation::CFI {
+            if mitigation == SpectrePHTMitigation::INTERLOCK {
                 sink.put4(label);
             }
         }

@@ -53,14 +53,11 @@ fn spectre_resistance_on_func(
     cur: &mut FuncCursor,
     first_inst: &Inst,
     _divert: &RegDiversions,
-    can_be_indirectly_called: bool,
+    _can_be_indirectly_called: bool,
 ) {
     let mitigation = get_spectre_mitigation();
     if mitigation == SpectreMitigation::CET {
         cur.func.pre_endbranch[*first_inst] = true;
-        if can_be_indirectly_called {
-            cur.func.pre_lfence[*first_inst] = true;
-        }
     }
 }
 
@@ -101,17 +98,21 @@ fn spectre_resistance_on_inst(
                 cur.func.post_lfence[*inst] = true;
             }
         }
-        SpectreMitigation::SFI => {
+        SpectreMitigation::SFI | SpectreMitigation::SFIASLR => {
             if opcode.is_return() && !cur.func.ret_replaced[*inst] {
                 let replacement = cranelift_spectre::inst::get_pop_jump_ret();
                 cur.func.replacement[*inst].append(&mut replacement.to_vec());
                 cur.func.ret_replaced[*inst] = true;
             }
 
-            let heap_index_registers = get_pinned_base_heap_index_registers(isa, cur, divert, inst);
-            cur.func.registers_to_truncate[*inst] = heap_index_registers;
         }
         _ => {}
+    };
+
+    // Mask index registers
+    if cranelift_spectre::settings::get_use_linear_block(mitigation) {
+        let heap_index_registers = get_pinned_base_heap_index_registers(isa, cur, divert, inst);
+        cur.func.registers_to_truncate[*inst] = heap_index_registers;
     }
 }
 
@@ -314,7 +315,7 @@ pub fn relax_branches(
 
     for (jt, jt_data) in func.jump_tables.iter() {
         func.jt_offsets[jt] = offset;
-        let table_entry_size_bytes = if get_spectre_pht_mitigation() == SpectrePHTMitigation::CFI {
+        let table_entry_size_bytes = if get_spectre_pht_mitigation() == SpectrePHTMitigation::INTERLOCK {
             4 + 4 // 4 for the offset, 4 for the CFI label
         } else {
             4

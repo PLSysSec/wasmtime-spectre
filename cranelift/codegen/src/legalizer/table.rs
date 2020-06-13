@@ -90,10 +90,10 @@ fn compute_addr(
 
     let mitigation = cranelift_spectre::settings::get_spectre_mitigation();
 
-    if mitigation == cranelift_spectre::settings::SpectreMitigation::SFI {
+    if cranelift_spectre::settings::get_use_linear_block(mitigation) {
         if !min_table_size.is_power_of_two() {
-            // SFI scheme guarantees through changes elsewhere that callback tables are always powers of 2
-            panic!("Spectre SFI scheme failure. Expected power of 2 for callback table");
+            // Spectre scheme guarantees through changes elsewhere that callback tables are always powers of 2
+            panic!("Spectre scheme failure. Expected power of 2 for callback table");
         }
         index = pos.ins().band_imm(index, (min_table_size - 1) as i64);
     }
