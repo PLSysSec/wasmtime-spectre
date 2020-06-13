@@ -963,7 +963,7 @@ pub fn do_remove_redundant_blocks(func: &mut Function, cfg: &mut ControlFlowGrap
                 continue;
             }
             if block_args.iter().zip(jump_args.iter()).any(|(bv, jv)| bv != jv) {
-                panic!("Block and jump have the same number of args but not identical lists.\n  Block args: {:?}\n  Jump args: {:?}\n", block_args, jump_args);
+                continue;
             }
 
             // Replace all jumps to `block` with jumps to `jump_dest` with the same arguments
