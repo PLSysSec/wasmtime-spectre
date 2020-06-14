@@ -805,27 +805,23 @@ fn get_registers<'a>(func: &'a Function, divert: &'a RegDiversions, values: impl
     })
 }
 
-fn is_heap_op(isa: &dyn TargetIsa, opcode: Opcode, mut in_regs: impl Iterator<Item = RegUnit>) -> bool {
-    let r15 = isa.register_info().parse_regunit("r15").unwrap();
+fn is_heap_op(opcode: Opcode) -> bool {
     if opcode.can_load() || opcode.can_store() {
-        let ret = in_regs.by_ref().any(|r| r == r15)
-            || !is_stack_op(isa, opcode, in_regs);
+        let ret = !is_stack_op(opcode);
         return ret;
     } else {
         false
     }
 }
 
-fn is_stack_op(isa: &dyn TargetIsa, opcode: Opcode, mut in_regs: impl Iterator<Item = RegUnit>) -> bool {
-    let rsp = isa.register_info().parse_regunit("rsp").unwrap();
+fn is_stack_op(opcode: Opcode) -> bool {
     if opcode.can_load() || opcode.can_store() {
         let stack_op = opcode == Opcode::X86Push
             || opcode == Opcode::X86Pop
             || opcode == Opcode::Spill
             || opcode == Opcode::Fill
             || opcode == Opcode::Regspill
-            || opcode == Opcode::Regfill
-            || in_regs.any(|r| r == rsp);
+            || opcode == Opcode::Regfill;
         return stack_op;
     } else {
         false
@@ -839,7 +835,7 @@ fn is_stack_op(isa: &dyn TargetIsa, opcode: Opcode, mut in_regs: impl Iterator<I
 /// appropriate `Block`.
 ///
 /// This function preserves the cursor position.
-fn is_heap_op_in_block(cur: &mut EncCursor, block: Block, isa: &dyn TargetIsa, divert: &RegDiversions) -> bool {
+fn is_heap_op_in_block(cur: &mut EncCursor, block: Block) -> bool {
     let saved_position = cur.position();
     cur.goto_first_inst(block);
     let found_heap_op = loop {
@@ -847,9 +843,7 @@ fn is_heap_op_in_block(cur: &mut EncCursor, block: Block, isa: &dyn TargetIsa, d
             None => break false, // done with all instructions in block
             Some(inst) => {
                 let opcode = cur.func.dfg[inst].opcode();
-                let args = cur.func.dfg.inst_args(inst).iter().copied();
-                let in_regs = get_registers(&cur.func, &divert, args);
-                if is_heap_op(isa, opcode, in_regs) {
+                if is_heap_op(opcode) {
                     break true;
                 }
             }
@@ -938,56 +932,119 @@ fn block_terminator_is_uncond_br(cur: &mut EncCursor, block: Block) -> bool {
 /// Is `lp` an innermost loop, i.e., a loop with no child loops
 fn is_innermost_loop(loop_analysis: &LoopAnalysis, lp: Loop) -> bool {
     for other_lp in loop_analysis.loops() {
-        if loop_analysis.is_child_loop(other_lp, lp) {
+        if other_lp != lp && loop_analysis.is_child_loop(other_lp, lp) {
             return false;
         }
     }
     return true;
 }
 
-pub fn do_weird_loop_pass(func: &mut Function, loop_analysis: &LoopAnalysis, isa: &dyn TargetIsa) {
+// Replace heap masking with index masking on innermost loops
+pub fn do_index_masking_on_inner_loop_pass(func: &mut Function, loop_analysis: &LoopAnalysis, isa: &dyn TargetIsa) {
+    // let cur_func = cranelift_spectre::inst::get_curr_func();
+
+    // if !cur_func.starts_with("guest_func_spec_nestedFor") {
+    //     return;
+    // }
+
+    // println!("Function at top of do_index_masking_on_inner_loop_pass:\n{}", func.display(isa));
+
     for lp in loop_analysis.loops() {
         if !is_innermost_loop(loop_analysis, lp) {
             continue;
         }
+
         let mut cur = EncCursor::new(func, isa);
+
         while let Some(block) = cur.next_block() {
+
             if loop_analysis.is_in_loop(block, lp) {
                 while let Some(inst) = cur.next_inst() {
-                    weird_loop_pass_on_inst(cur, inst, isa);
+                    index_masking_on_inner_loop_pass_on_inst(&mut cur, inst, isa);
                 }
             }
         }
     }
+
+    // println!("Function at bottom of do_index_masking_on_inner_loop_pass:\n{}", func.display(isa));
 }
 
-fn weird_loop_pass_on_inst(cur: &mut EncCursor, inst: Inst, isa: &dyn TargetIsa) {
+fn index_masking_on_inner_loop_pass_on_inst(cur: &mut EncCursor, inst: Inst, _isa: &dyn TargetIsa) {
     let opcode = cur.func.dfg[inst].opcode();
     match opcode {
         Opcode::CfiCheckThatLabelIsEqualTo => {
             // replace with cfi_sub
+            let args = cur.func.dfg.inst_args(inst);
+            let prev_label = args[0];
+            cur.ins().cfi_sub(prev_label);
+            cur.remove_inst_and_step_back();
         }
-        Opcode::Jump | Opcode::Fallthrough => {
-            // change the previous SetCfiLabel to conditionally_set_cfi_label
-            // DON'T do anything if the prev instruction is a condbr
+        Opcode::SetCfiLabel => {
+            // replace with conditionally_set_cfi_label
+            let prev_label_imm= match cur.func.dfg[inst] {
+                InstructionData::UnaryImm { imm, .. } => imm,
+                _ => panic!("Cfi index_masking: SetCfiLabel expected UnaryImm data")
+            };
+            let reg = cur.ins().iconst(types::I64, prev_label_imm);
+            cur.ins().conditionally_set_cfi_label(reg);
+            cur.remove_inst_and_step_back();
         }
-        _ if opcode.is_call() => {
-            // change the previous SetCfiLabel to conditionally_set_cfi_label
-        }
-
-        // ???
-        // TODO returns
-        // ???
-
         Opcode::BrzCfi | Opcode::BrnzCfi | Opcode::BrifCfi | Opcode::BrffCfi => {
-            // Change the previous SetCfiLabel to a CondbrGetNewCfiLabel
-            // and we'll have to change the input parameter
+            // Add a condbr_get_new_cfi_label next to the previous conditionally_set_cfi_label
+            // and use its output as the input to the branch
+
+            let args = cur.func.dfg.inst_args(inst);
+            let block2_label = args[1];
+            let move_back_one = get_prev_opcode(cur).map_or(false, |p| p.writes_cpu_flags());
+            if move_back_one {
+                cur.prev_inst();
+            }
+
+            let target_block2_label_or_r14 = cur.ins().condbr_get_new_cfi_label(block2_label);
+            if move_back_one {
+                cur.next_inst();
+            }
+            cur.func.dfg.inst_args_mut(inst)[1] = target_block2_label_or_r14;
         }
-        _ if is_heap_op(isa, opcode, in_regs) => {
-            // insert a cfi_reg_set to set heap index to zero
+        _ if is_heap_op(opcode) => {
+            let args = cur.func.dfg.inst_args(inst);
+            let index =  {
+                args.last().unwrap().clone()
+            };
+            let zero = cur.ins().iconst(types::I64, 0);
+            let new_index = cur.ins().cfi_reg_set(zero, index);
+            let args_mut = cur.func.dfg.inst_args_mut(inst);
+            args_mut[args_mut.len() - 1] = new_index;
         }
         _ => {}
     }
+}
+
+//// Get the first previous inst with opcode == target that is in the same linear block
+///
+/// This function preserves the cursor position.
+fn get_prior_inst_with_opcode(cur: &mut EncCursor, target: Opcode) -> Option<Inst> {
+    // this should be in the same block, so only iterate in this block
+    let saved_cursor_position = cur.position();
+
+    let found = loop {
+        match cur.current_inst() {
+            None => break None,
+            Some(cur_inst) => {
+                let opcode = cur.func.dfg[cur_inst].opcode();
+                if opcode == target {
+                    break Some(cur_inst);
+                }
+                else if opcode.is_call() {
+                    break None;
+                }
+            }
+        }
+        cur.prev_inst();
+    };
+
+    cur.set_position(saved_cursor_position);
+    return found;
 }
 
 /// For any blocks B that consist of solely an unconditional jump to some

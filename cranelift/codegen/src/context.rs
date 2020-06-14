@@ -239,6 +239,8 @@ impl Context {
                     self.cfi_number_allocate(isa, cfi_start_num)?;
                     self.cfi_add_checks(isa)?;
                     self.cfi_set_correct_labels(isa)?;
+
+                    self.index_masking_on_inner_loop_pass(isa)?;
                 }
                 _ => {}
             }
@@ -566,6 +568,15 @@ impl Context {
     /// Insert the appropriate CFI boilerplate surrounding indirect jumps (jump tables)
     pub fn indirectbr_cfi(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
         do_indirectbr_cfi(&mut self.func, isa);
+        // we recompute CFG and domtree in case they have been invalidated by the pass
+        self.compute_cfg();
+        self.compute_domtree();
+        self.verify_if(isa)
+    }
+
+    /// Replace the heap masking cfi in the inner most loop with index masking cfi --- pre regalloc pass
+    pub fn index_masking_on_inner_loop_pass(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
+        do_index_masking_on_inner_loop_pass(&mut self.func, &self.loop_analysis, isa);
         // we recompute CFG and domtree in case they have been invalidated by the pass
         self.compute_cfg();
         self.compute_domtree();

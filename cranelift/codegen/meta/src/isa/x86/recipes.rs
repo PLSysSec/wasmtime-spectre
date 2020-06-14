@@ -2999,15 +2999,15 @@ pub(crate) fn define<'shared>(
     recipes.add_recipe(
         EncodingRecipeBuilder::new(
             "condbr_get_new_cfi_label",
-            &formats.binary,
-            14,
+            &formats.unary,
+            7,
         )
-        .operands_in(vec![gpr, gpr])
+        .operands_in(vec![gpr])
         .operands_out(vec![gpr])
         .clobbers_flags(true)
         .emit(
         r#"
-                let bytes = cranelift_spectre::inst::get_condbr_new_cfi_label_bytes(in_reg0, in_reg1, out_reg0);
+                let bytes = cranelift_spectre::inst::get_condbr_new_cfi_label_bytes(in_reg0, out_reg0);
                 bytes.iter().for_each(|&b| sink.put1(b));
             "#,
         ),
@@ -3075,13 +3075,14 @@ pub(crate) fn define<'shared>(
             3+4,
         )
         .operands_in(vec![gpr, gpr])
+        .operands_out(vec![0])
         .clobbers_flags(true)
         .emit(
             r#"
-                use cranelift_spectre::inst::{get_test_bytes, get_cmovnz};
+                use cranelift_spectre::inst::{get_test_bytes, get_cmovz};
                 use cranelift_spectre::inst::R_R14;
                 for &byte in get_test_bytes(R_R14) { sink.put1(byte); }
-                for byte in get_cmovnz(in_reg0, in_reg1) { sink.put1(byte); }
+                for byte in get_cmovz(in_reg0, in_reg1) { sink.put1(byte); }
             "#,
         ),
     );

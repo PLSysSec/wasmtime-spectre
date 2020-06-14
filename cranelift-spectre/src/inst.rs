@@ -168,6 +168,45 @@ pub fn get_test_bytes(reg: u16) -> &'static [u8] {
     }
 }
 
+/// zero target reg, padded to 3 bytes
+// xor eax, eax
+// xor ecx, ecx
+// xor edx, edx
+// xor ebx, ebx
+// xor esp, esp
+// xor ebp, ebp
+// xor esi, esi
+// xor edi, edi
+// xor r8d, r8d
+// xor r9d, r9d
+// xor r10d, r10d
+// xor r11d, r11d
+// xor r12d, r12d
+// xor r13d, r13d
+// xor r14d, r14d
+// xor r15d, r15d
+pub fn get_zero_bytes(reg: u16) -> &'static [u8] {
+    match reg {
+        R_RAX => &[0x90, 0x31, 0xc0],
+        R_RCX => &[0x90, 0x31, 0xc9],
+        R_RDX => &[0x90, 0x31, 0xd2],
+        R_RBX => &[0x90, 0x31, 0xdb],
+        R_RSP => &[0x90, 0x31, 0xe4],
+        R_RBP => &[0x90, 0x31, 0xed],
+        R_RSI => &[0x90, 0x31, 0xf6],
+        R_RDI => &[0x90, 0x31, 0xff],
+        R_R8  => &[0x45, 0x31, 0xc0],
+        R_R9  => &[0x45, 0x31, 0xc9],
+        R_R10 => &[0x45, 0x31, 0xd2],
+        R_R11 => &[0x45, 0x31, 0xdb],
+        R_R12 => &[0x45, 0x31, 0xe4],
+        R_R13 => &[0x45, 0x31, 0xed],
+        R_R14 => &[0x45, 0x31, 0xf6],
+        R_R15 => &[0x45, 0x31, 0xff],
+        _ => panic!("Unknown reg:{}", reg),
+    }
+}
+
 fn get_reg_bits(reg: u16) -> u8 {
     match reg {
         R_RAX => 0,
@@ -370,8 +409,7 @@ pub fn get_curr_func() -> String {
 }
 
 pub fn get_condbr_new_cfi_label_bytes(
-    block1_label_reg: u16,
-    block2_label_reg: u16,
+    block_label_reg: u16,
     out_reg: u16,
 ) -> Vec<u8> {
     // See docs on the "condbr_get_new_cfi_label" instruction
@@ -381,24 +419,12 @@ pub fn get_condbr_new_cfi_label_bytes(
     //
     // This should return the bytes for the following instructions:
     // ```
-    // test r14, r14
-    // cmovz r14, block1_label
     // mov out, r14
     // cmovz out, block2_label
     // ```
 
-    let mut bytes = get_test_bytes(R_R14).to_vec();
-    bytes.extend_from_slice(&get_cmovz(R_R14, block1_label_reg));
-    bytes.extend_from_slice(get_mov_from_r14(out_reg));
-    bytes.extend_from_slice(&get_cmovz(out_reg, block2_label_reg));
+    let mut bytes = get_mov_from_r14(out_reg).to_vec();
+    bytes.extend_from_slice(&get_cmovz(out_reg, block_label_reg));
     bytes
 }
 
-/*
-pub fn get_uncondbr_new_cfi_label_bytes(block1_label_reg: u16) -> Vec<u8> {
-    // mov out, block1_label
-    let mut bytes = get_test_bytes(R_R14).to_vec();
-    bytes.extend_from_slice(&get_cmovz(R_R14, block1_label_reg));
-    bytes
-}
-*/
