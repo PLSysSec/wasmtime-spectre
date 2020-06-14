@@ -939,6 +939,24 @@ fn is_innermost_loop(loop_analysis: &LoopAnalysis, lp: Loop) -> bool {
     return true;
 }
 
+fn loop_contains_calls(loop_analysis: &LoopAnalysis, lp: Loop, func: &mut Function, isa: &dyn TargetIsa) -> bool {
+    let mut cur = EncCursor::new(func, isa);
+
+    while let Some(block) = cur.next_block() {
+
+        if loop_analysis.is_in_loop(block, lp) {
+            while let Some(inst) = cur.next_inst() {
+                let opcode = cur.func.dfg[inst].opcode();
+                if opcode.is_call() {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
 // Replace heap masking with index masking on innermost loops
 pub fn do_index_masking_on_inner_loop_pass(func: &mut Function, loop_analysis: &LoopAnalysis, isa: &dyn TargetIsa) {
     let cur_func = cranelift_spectre::inst::get_curr_func();
@@ -953,6 +971,9 @@ pub fn do_index_masking_on_inner_loop_pass(func: &mut Function, loop_analysis: &
 
     for lp in loop_analysis.loops() {
         if !is_innermost_loop(loop_analysis, lp) {
+            continue;
+        }
+        if loop_contains_calls(loop_analysis, lp, func, isa) {
             continue;
         }
 
