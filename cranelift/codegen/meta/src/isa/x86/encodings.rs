@@ -1358,7 +1358,11 @@ fn define_alu(
     let x86_bsf = x86.by_name("x86_bsf");
     let x86_bsr = x86.by_name("x86_bsr");
     let set_cfi_label = x86.by_name("set_cfi_label");
+    let condbr_get_new_cfi_label = x86.by_name("condbr_get_new_cfi_label");
+    let conditionally_set_cfi_label = x86.by_name("conditionally_set_cfi_label");
     let cfi_check = x86.by_name("cfi_check_that_label_is_equal_to");
+    let cfi_sub = x86.by_name("cfi_sub");
+    let cfi_reg_set = x86.by_name("cfi_reg_set");
 
     // Shorthands for recipes.
     let rec_bsf_and_bsr = r.template("bsf_and_bsr");
@@ -1375,7 +1379,11 @@ fn define_alu(
     let rec_seti_abcd = r.template("seti_abcd");
     let rec_urm = r.template("urm");
     let rec_set_cfi_label = r.template("set_cfi_label");
+    let rec_condbr_cfi = r.recipe("condbr_get_new_cfi_label");
+    let rec_cond_set_cfi = r.recipe("conditionally_set_cfi_label");
     let rec_cfi_check = r.recipe("cfi_check");
+    let rec_cfi_sub = r.recipe("cfi_sub");
+    let rec_cfi_reg_set = r.recipe("cfi_reg_set");
 
     // Predicates shorthands.
     let use_popcnt = settings.predicate_by_name("use_popcnt");
@@ -1542,7 +1550,11 @@ fn define_alu(
     e.enc_i32_i64(x86_bsr, rec_bsf_and_bsr.opcodes(&BIT_SCAN_REVERSE));
 
     e.enc64(set_cfi_label, rec_set_cfi_label.opcodes(&MOV_IMM).rex().w());
+    e.enc64_rec(condbr_get_new_cfi_label, rec_condbr_cfi, 0);
+    e.enc64_rec(conditionally_set_cfi_label, rec_cond_set_cfi, 0);
     e.enc64_rec(cfi_check, rec_cfi_check, 0);
+    e.enc64_rec(cfi_sub, rec_cfi_sub, 0);
+    e.enc64_rec(cfi_reg_set, rec_cfi_reg_set, 0);
 
     // Comparisons
     e.enc_i32_i64(icmp, rec_icscc.opcodes(&CMP_REG));

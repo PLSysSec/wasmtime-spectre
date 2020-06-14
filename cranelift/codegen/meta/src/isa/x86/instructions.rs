@@ -270,6 +270,8 @@ pub(crate) fn define(
             .build(),
     );
     let cfi_label = &Operand::new("cfi_label", block_label);
+    let block1_label = &Operand::new("block1_label", block_label);
+    let block2_label = &Operand::new("block2_label", block_label);
     let block_label_imm = &Operand::new("i", &immediates.imm64)
         .with_doc( "An immediate representing the block label");
 
@@ -287,6 +289,52 @@ pub(crate) fn define(
 
     ig.push(
         Inst::new(
+            "condbr_get_new_cfi_label",
+            r#"
+    Get the new cfi label which should be `cmov`d into `r14` if the branch condition is true.
+
+    If `r14` is currently zero (we're currently on the right path), then this instruction
+    will set `r14` to `block1_label` and return `block2_label`.
+
+    If `r14` is currently nonzero (we're currently on the wrong path), then this instruction
+    will leave `r14` alone and also return `r14`.
+
+    The full sequence is:
+    ```
+            ----
+            | test r14, r14
+    this    | cmovz r14, block1_label
+    instr   |
+    uction  | mov tmp, r14
+            | cmovz tmp, block2_label
+            ----
+
+    < set flags for branch condition >
+    cmovx r14, tmp
+    jx
+    ```
+    where this instruction takes `block1_label` and `block2_label` as inputs and returns `tmp`.
+    "#,
+            &formats.binary,
+        )
+        .operands_in(vec![block1_label, block2_label])
+    );
+
+    ig.push(
+        Inst::new(
+            "conditionally_set_cfi_label",
+            r#"
+    This sets the CFI label register (`r14`) to the label given as an
+    argument to this instruction, but only if the CFI label register
+    was currently 0 (indicating we're on the right path).
+    "#,
+            &formats.unary,
+        )
+        .operands_in(vec![cfi_label]),
+    );
+
+    ig.push(
+        Inst::new(
             "cfi_check_that_label_is_equal_to",
             r#"
     This inserts the proper checks that the CFI label register (`r14`)
@@ -300,6 +348,32 @@ pub(crate) fn define(
             &formats.unary,
         )
         .operands_in(vec![cfi_label]),
+    );
+
+    ig.push(
+        Inst::new(
+            "cfi_sub",
+            r#"
+    cfi_check but doesn't zero anything, just sets the CFI label register
+    (`r14`) to zero if appropriate.
+    "#,
+            &formats.unary,
+        )
+        .operands_in(vec![cfi_label]),
+    );
+
+    let reg = &Operand::new("reg", block_label);
+    let val = &Operand::new("val", block_label);
+    ig.push(
+        Inst::new(
+            "cfi_reg_set",
+            r#"
+    Sets the input register to `val` using a cmov iff the CFI label register
+    (`r14`) is not zero.
+    "#,
+            &formats.binary,
+        )
+        .operands_in(vec![reg, val]),
     );
 
     let uimm8 = &immediates.uimm8;

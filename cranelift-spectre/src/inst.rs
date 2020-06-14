@@ -369,7 +369,6 @@ pub fn get_curr_func() -> String {
     })
 }
 
-/*
 pub fn get_condbr_new_cfi_label_bytes(
     block1_label_reg: u16,
     block2_label_reg: u16,
@@ -394,7 +393,6 @@ pub fn get_condbr_new_cfi_label_bytes(
     bytes.extend_from_slice(&get_cmovz(out_reg, block2_label_reg));
     bytes
 }
-*/
 
 /*
 pub fn get_uncondbr_new_cfi_label_bytes(block1_label_reg: u16) -> Vec<u8> {

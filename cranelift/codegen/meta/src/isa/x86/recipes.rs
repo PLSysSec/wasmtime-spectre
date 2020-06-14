@@ -2996,6 +2996,96 @@ pub(crate) fn define<'shared>(
         ),
     );
 
+    recipes.add_recipe(
+        EncodingRecipeBuilder::new(
+            "condbr_get_new_cfi_label",
+            &formats.binary,
+            14,
+        )
+        .operands_in(vec![gpr, gpr])
+        .operands_out(vec![gpr])
+        .clobbers_flags(true)
+        .emit(
+        r#"
+                let bytes = cranelift_spectre::inst::get_condbr_new_cfi_label_bytes(in_reg0, in_reg1, out_reg0);
+                bytes.iter().for_each(|&b| sink.put1(b));
+            "#,
+        ),
+    );
+
+    recipes.add_recipe(
+        EncodingRecipeBuilder::new(
+            "conditionally_set_cfi_label",
+            &formats.unary,
+            3 + CMOV_SIZE,
+        )
+        .operands_in(vec![gpr])
+        .clobbers_flags(true)
+        .emit(
+        r#"
+                use cranelift_spectre::inst::R_R14;
+                // test r14, r14
+                let bytes = cranelift_spectre::inst::get_test_bytes(R_R14);
+                bytes.iter().for_each(|&b| sink.put1(b));
+                // cmovz r14, new_label
+                let bytes = cranelift_spectre::inst::get_cmovz(R_R14, in_reg0);
+                bytes.iter().for_each(|&b| sink.put1(b));
+            "#,
+        ),
+    );
+
+    recipes.add_recipe(
+        EncodingRecipeBuilder::new(
+            "cfi_sub",
+            &formats.unary,
+            if DEBUG_MODE { 4+2+1+6+3 } else { 3 },
+        )
+        .operands_in(vec![gpr])
+        .clobbers_flags(true)
+        .emit(
+            r#"
+                use cranelift_spectre::inst::{DEBUG_MODE, IGNORE_TRAPS_IN, get_curr_func};
+                if DEBUG_MODE {
+                    // Debug
+                    //  49 83 fe 0a             cmp    $0xa,%r14
+                    //  74 07                   je     179 <square.L1>
+                    //  cc or 90                int3 or nop
+                    //  41 be 0a 00 00 00       mov    $0xa,%r14d
+                    for &byte in &[0x49, 0x83, 0xfe, 0x0a] { sink.put1(byte); }
+                    for &byte in &[0x74, 0x07] { sink.put1(byte); }
+                    if get_curr_func().starts_with(IGNORE_TRAPS_IN) {
+                        sink.put1(0x90);
+                    } else {
+                        sink.put1(0xcc);
+                    }
+                    for &byte in &[0x41, 0xbe, 0x0a, 0x00, 0x00, 0x00] { sink.put1(byte); }
+                }
+
+                use cranelift_spectre::inst::get_sub_bytes;
+                use cranelift_spectre::inst::R_R14;
+                for byte in get_sub_bytes(R_R14, in_reg0) { sink.put1(byte); }
+            "#,
+        ),
+    );
+
+    recipes.add_recipe(
+        EncodingRecipeBuilder::new(
+            "cfi_reg_set",
+            &formats.binary,
+            3+4,
+        )
+        .operands_in(vec![gpr, gpr])
+        .clobbers_flags(true)
+        .emit(
+            r#"
+                use cranelift_spectre::inst::{get_test_bytes, get_cmovnz};
+                use cranelift_spectre::inst::R_R14;
+                for &byte in get_test_bytes(R_R14) { sink.put1(byte); }
+                for byte in get_cmovnz(in_reg0, in_reg1) { sink.put1(byte); }
+            "#,
+        ),
+    );
+
     // Arithmetic with flag I/O.
 
     // XX /r, MR form. Add two GPR registers and set carry flag.
