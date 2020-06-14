@@ -5,6 +5,7 @@ use crate::ir::{Block, Inst, InstBuilder, InstructionData, Value, ValueLoc, type
 use crate::ir::function::Function;
 use crate::ir::instructions::{BranchInfo, Opcode};
 use crate::isa::{registers::RegUnit, TargetIsa};
+use crate::loop_analysis::{LoopAnalysis, Loop};
 use alloc::vec::Vec;
 
 use crate::regalloc::RegDiversions;
@@ -932,6 +933,61 @@ fn block_terminator_is_uncond_br(cur: &mut EncCursor, block: Block) -> bool {
 
     cur.set_position(saved_position);
     return ret;
+}
+
+/// Is `lp` an innermost loop, i.e., a loop with no child loops
+fn is_innermost_loop(loop_analysis: &LoopAnalysis, lp: Loop) -> bool {
+    for other_lp in loop_analysis.loops() {
+        if loop_analysis.is_child_loop(other_lp, lp) {
+            return false;
+        }
+    }
+    return true;
+}
+
+pub fn do_weird_loop_pass(func: &mut Function, loop_analysis: &LoopAnalysis, isa: &dyn TargetIsa) {
+    for lp in loop_analysis.loops() {
+        if !is_innermost_loop(loop_analysis, lp) {
+            continue;
+        }
+        let mut cur = EncCursor::new(func, isa);
+        while let Some(block) = cur.next_block() {
+            if loop_analysis.is_in_loop(block, lp) {
+                while let Some(inst) = cur.next_inst() {
+                    weird_loop_pass_on_inst(cur, inst, isa);
+                }
+            }
+        }
+    }
+}
+
+fn weird_loop_pass_on_inst(cur: &mut EncCursor, inst: Inst, isa: &dyn TargetIsa) {
+    let opcode = cur.func.dfg[inst].opcode();
+    match opcode {
+        Opcode::CfiCheckThatLabelIsEqualTo => {
+            // replace with cfi_sub
+        }
+        Opcode::Jump | Opcode::Fallthrough => {
+            // change the previous SetCfiLabel to conditionally_set_cfi_label
+            // DON'T do anything if the prev instruction is a condbr
+        }
+        _ if opcode.is_call() => {
+            // change the previous SetCfiLabel to conditionally_set_cfi_label
+        }
+
+        // ???
+        // TODO returns
+        // ???
+
+        Opcode::BrzCfi | Opcode::BrnzCfi | Opcode::BrifCfi | Opcode::BrffCfi => {
+            // Change the previous SetCfiLabel to a CondbrGetNewCfiLabel
+            // and we'll have to change the input parameter
+        }
+        _ if is_heap_op(isa, opcode, in_regs) => {
+            // insert a cfi_reg_set to set heap index to zero
+        }
+        _ => {}
+    }
 }
 
 /// For any blocks B that consist of solely an unconditional jump to some
