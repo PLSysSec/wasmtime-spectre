@@ -359,7 +359,8 @@ where
     contents: ModuleContents<B>,
     functions_to_finalize: Vec<FuncId>,
     data_objects_to_finalize: Vec<DataId>,
-    backend: B,
+    /// backend
+    pub backend: B,
 }
 
 pub struct ModuleCompiledFunction {
@@ -579,7 +580,7 @@ where
         TS: binemit::TrapSink,
     {
         let _func_name = &self.contents.functions[func].decl.name;
-        if _func_name.starts_with("guest_func_main") {
+        if _func_name.starts_with("guest_func_spec_singleBranch") {
             let _s = _func_name;
             // println!("Found: {}", s);
         }

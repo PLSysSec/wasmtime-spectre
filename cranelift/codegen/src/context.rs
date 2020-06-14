@@ -26,7 +26,7 @@ use crate::licm::do_licm;
 use crate::loop_analysis::LoopAnalysis;
 use crate::machinst::MachCompileResult;
 use crate::nan_canonicalization::do_nan_canonicalization;
-use crate::pht_to_btb::do_pht_to_btb;
+use crate::pht_to_btb::{do_pht_to_btb, do_replace_selects};
 use crate::postopt::do_postopt;
 use crate::redundant_reload_remover::RedundantReloadRemover;
 use crate::regalloc;
@@ -180,7 +180,11 @@ impl Context {
             self.canonicalize_nans(isa)?;
         }
 
-        if get_spectre_pht_mitigation() == SpectrePHTMitigation::PHTTOBTB {
+        let pht_mitigation = get_spectre_pht_mitigation();
+        if pht_mitigation == SpectrePHTMitigation::PHTTOBTB || pht_mitigation == SpectrePHTMitigation::INTERLOCK {
+            self.replace_selects(isa)?;
+        }
+        if pht_mitigation == SpectrePHTMitigation::PHTTOBTB {
             self.pht_to_btb(isa)?;
         }
 
@@ -570,7 +574,17 @@ impl Context {
 
     /// Perform the pht to btb pass to replace direct branches with cmov + indirect jump.
     pub fn pht_to_btb(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
-        do_pht_to_btb(&mut self.func, &mut self.cfg);
+        do_pht_to_btb(&mut self.func, &mut self.cfg, isa);
+        self.compute_cfg();
+        self.compute_domtree();
+        self.verify_if(isa)
+    }
+
+    /// Replace selects with cmovs or indirect jumps
+    pub fn replace_selects(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
+        do_replace_selects(&mut self.func, &mut self.cfg, isa);
+        self.compute_cfg();
+        self.compute_domtree();
         self.verify_if(isa)
     }
 

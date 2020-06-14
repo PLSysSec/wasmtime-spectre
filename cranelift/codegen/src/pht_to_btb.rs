@@ -4,11 +4,12 @@ use crate::ir::instructions::BranchInfo;
 use crate::ir::{self, Function, JumpTableData};
 
 use crate::ir::InstBuilder;
+use crate::isa::TargetIsa;
 
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub fn do_pht_to_btb(func: &mut Function, cfg: &mut ControlFlowGraph) {
+pub fn do_pht_to_btb(func: &mut Function, cfg: &mut ControlFlowGraph, _isa: &dyn TargetIsa) {
     let mut repeat = true;
 
     'outer: while repeat {
@@ -21,12 +22,84 @@ pub fn do_pht_to_btb(func: &mut Function, cfg: &mut ControlFlowGraph) {
                 let opcode = cur.func.dfg[inst].opcode();
                 let _enc = cur.func.encodings[inst];
 
+                if opcode == ir::Opcode::Select {
+                    panic!("pht_to_btb does not support select instruction. Run replace_select pass first");
+                }
+
                 if opcode.is_branch() && opcode != ir::Opcode::BrTable && opcode != ir::Opcode::Jump {
                     let ret = convert_branch_to_table(&mut cur, cfg);
                     if ret {
                         repeat = true;
                         continue 'outer;
                     }
+                }
+            }
+        }
+    }
+}
+
+// Replace select instructions which would otherwise get expanded to branches much later
+pub fn do_replace_selects(func: &mut Function, cfg: &mut ControlFlowGraph, _isa: &dyn TargetIsa) {
+    // let cur_func = cranelift_spectre::inst::get_curr_func();
+    // if cur_func == "guest_func_spec_singleBranch" {
+    //     println!("Function at top of do_pht_to_btb:\n{}", func.display(_isa));
+    // }
+
+    let mut cur = FuncCursor::new(func);
+    while let Some(_) = cur.next_block() {
+        while let Some(inst) = cur.next_inst() {
+            let opcode = cur.func.dfg[inst].opcode();
+            if opcode == ir::Opcode::Select {
+
+                let (ctrl, tval, fval) = match cur.func.dfg[inst] {
+                    ir::InstructionData::Ternary {
+                        opcode: ir::Opcode::Select,
+                        args,
+                    } => (args[0], args[1], args[2]),
+                    _ => panic!("Expected select: {}", cur.func.dfg.display_inst(inst, None)),
+                };
+
+                let ty = cur.func.dfg.value_type(tval);
+                if ty.is_int() {
+                    // Replace `result = select ctrl, tval, fval` with:
+                    //
+                    //   ifcmp_imm ctrl, 0
+                    //   result = selectif flags, tval, fval
+                    let ctrl_ty = cur.func.dfg.value_type(ctrl);
+                    let ctrl_int = if ctrl_ty.is_int() {
+                        ctrl
+                    } else {
+                        cur.ins().bint(ir::types::I32, ctrl)
+                    };
+                    let flags_val = cur.ins().ifcmp_imm(ctrl_int, 0);
+                    cur.func.dfg.replace(inst).selectif(ty, ir::condcodes::IntCC::NotEqual, flags_val, tval, fval);
+
+                    cfg.recompute_block(cur.func, cur.current_block().unwrap());
+                    // let new_inst = pos.ins().selectif(ty, ir::condcodes::IntCC::NotEqual, flags_val, tval, fval);
+                    // let old = pos.func.dfg.first_result(inst);
+                    // pos.func.dfg.replace_result(new_inst, new_inst);
+                    // pos.remove_inst();
+                } else {
+                    // Replace `result = select ctrl, tval, fval` with:
+                    //
+                    //   brnz ctrl, new_block(tval)
+                    //   jump new_block(fval)
+                    // new_block(result):
+                    let old_block = cur.current_block().unwrap();
+                    let result = cur.func.dfg.first_result(inst);
+                    cur.func.dfg.clear_results(inst);
+                    let new_block = cur.func.dfg.make_block();
+                    cur.func.dfg.attach_block_param(new_block, result);
+
+                    cur.func.dfg.replace(inst).brnz(ctrl, new_block, &[tval]);
+                    cur.goto_inst(inst);
+                    cur.next_inst();
+                    cur.use_srcloc(inst);
+                    cur.ins().jump(new_block, &[fval]);
+                    cur.insert_block(new_block);
+
+                    cfg.recompute_block(cur.func, new_block);
+                    cfg.recompute_block(cur.func, old_block);
                 }
             }
         }
