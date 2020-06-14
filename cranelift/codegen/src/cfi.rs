@@ -941,11 +941,13 @@ fn is_innermost_loop(loop_analysis: &LoopAnalysis, lp: Loop) -> bool {
 
 // Replace heap masking with index masking on innermost loops
 pub fn do_index_masking_on_inner_loop_pass(func: &mut Function, loop_analysis: &LoopAnalysis, isa: &dyn TargetIsa) {
-    // let cur_func = cranelift_spectre::inst::get_curr_func();
+    let cur_func = cranelift_spectre::inst::get_curr_func();
 
-    // if !cur_func.starts_with("guest_func_spec_nestedFor") {
-    //     return;
-    // }
+    if !cur_func.starts_with("guest_func_spec_nestedFor") {
+        return;
+    }
+
+    println!("Using index optimizations for {}", cur_func);
 
     // println!("Function at top of do_index_masking_on_inner_loop_pass:\n{}", func.display(isa));
 
