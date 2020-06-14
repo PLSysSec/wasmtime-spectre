@@ -27,6 +27,7 @@ pub enum SpectreMitigation {
     SFI,
     CET,
     SFIASLR,
+    CETASLR,
 }
 
 #[derive(PartialEq, Debug, Clone, Copy, FromPrimitive)]
@@ -56,7 +57,10 @@ pub fn get_default_pht_protection(
 }
 
 pub fn get_use_linear_block(spectre_mitigation: SpectreMitigation) -> bool {
-    spectre_mitigation == SpectreMitigation::SFI || spectre_mitigation == SpectreMitigation::CET || spectre_mitigation == SpectreMitigation::SFIASLR
+    spectre_mitigation == SpectreMitigation::SFI ||
+        spectre_mitigation == SpectreMitigation::CET ||
+        spectre_mitigation == SpectreMitigation::SFIASLR ||
+        spectre_mitigation == SpectreMitigation::CETASLR
 }
 
 pub fn use_spectre_mitigation_settings(

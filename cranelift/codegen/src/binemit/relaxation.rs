@@ -56,7 +56,7 @@ fn spectre_resistance_on_func(
     _can_be_indirectly_called: bool,
 ) {
     let mitigation = get_spectre_mitigation();
-    if mitigation == SpectreMitigation::CET {
+    if mitigation == SpectreMitigation::CET || mitigation == SpectreMitigation::CETASLR {
         cur.func.pre_endbranch[*first_inst] = true;
     }
 }
