@@ -239,8 +239,8 @@ impl Context {
                     self.cfi_number_allocate(isa, cfi_start_num)?;
                     self.cfi_add_checks(isa)?;
                     self.cfi_set_correct_labels(isa)?;
-
-                    self.index_masking_on_inner_loop_pass(isa)?;
+                    // Seems to have no effect in most cases and pessimisation in some cases, disable
+                    // self.index_masking_on_inner_loop_pass(isa)?;
                 }
                 _ => {}
             }

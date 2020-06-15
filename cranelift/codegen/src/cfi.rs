@@ -958,15 +958,8 @@ fn loop_contains_calls(loop_analysis: &LoopAnalysis, lp: Loop, func: &mut Functi
 }
 
 // Replace heap masking with index masking on innermost loops
+// NOTE: This is unused for now as it does not help perf
 pub fn do_index_masking_on_inner_loop_pass(func: &mut Function, loop_analysis: &LoopAnalysis, isa: &dyn TargetIsa) {
-    let cur_func = cranelift_spectre::inst::get_curr_func();
-
-    if !cur_func.starts_with("guest_func_spec_nestedFor") {
-        return;
-    }
-
-    println!("Using index optimizations for {}", cur_func);
-
     // println!("Function at top of do_index_masking_on_inner_loop_pass:\n{}", func.display(isa));
 
     for lp in loop_analysis.loops() {
