@@ -78,11 +78,13 @@ pub fn perform_transition_protection_in() {
             invoke_lfence();
         }
 
-        if mitigation == SpectreMitigation::SFI && !get_spectre_disable_btbflush() &&
-            (get_spectre_stop_sbx_breakout() || get_spectre_stop_sbx_poisoning())
-        {
-            unsafe {
-                btb_flush();
+        if !get_spectre_disable_btbflush() {
+            if (mitigation == SpectreMitigation::SFIASLR) ||
+               (mitigation == SpectreMitigation::SFI && (get_spectre_stop_sbx_breakout() || get_spectre_stop_sbx_poisoning()))
+            {
+                unsafe {
+                    btb_flush();
+                }
             }
         }
     }
@@ -98,11 +100,12 @@ pub fn perform_transition_protection_out() {
             invoke_lfence();
         }
 
-        if mitigation == SpectreMitigation::SFI && !get_spectre_disable_btbflush() &&
-            get_spectre_stop_host_poisoning()
-        {
-            unsafe {
-                btb_flush();
+        if !get_spectre_disable_btbflush() {
+            if mitigation == SpectreMitigation::SFI && get_spectre_stop_host_poisoning()
+            {
+                unsafe {
+                    btb_flush();
+                }
             }
         }
     }
