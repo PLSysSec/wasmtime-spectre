@@ -8,6 +8,7 @@ pub struct SpectreSettings {
     pub spectre_stop_host_poisoning: bool,
     pub spectre_pht_mitigation: SpectrePHTMitigation,
     pub spectre_disable_btbflush: bool,
+    pub spectre_disable_mpk: bool,
 }
 
 static mut SPECTRE_SETTINGS: SpectreSettings = SpectreSettings {
@@ -17,6 +18,7 @@ static mut SPECTRE_SETTINGS: SpectreSettings = SpectreSettings {
     spectre_stop_host_poisoning: false,
     spectre_pht_mitigation: SpectrePHTMitigation::NONE,
     spectre_disable_btbflush: true,
+    spectre_disable_mpk: true,
 };
 
 #[derive(PartialEq, Debug, Clone, Copy, FromPrimitive)]
@@ -70,6 +72,7 @@ pub fn use_spectre_mitigation_settings(
     spectre_stop_host_poisoning: bool,
     spectre_pht_mitigation: SpectrePHTMitigation,
     spectre_disable_btbflush: bool,
+    spectre_disable_mpk: bool,
 ) {
     unsafe {
         SPECTRE_SETTINGS = SpectreSettings {
@@ -79,6 +82,7 @@ pub fn use_spectre_mitigation_settings(
             spectre_stop_host_poisoning,
             spectre_pht_mitigation,
             spectre_disable_btbflush,
+            spectre_disable_mpk,
         };
     }
 }
@@ -120,5 +124,12 @@ pub fn get_spectre_pht_mitigation() -> SpectrePHTMitigation {
 pub fn get_spectre_disable_btbflush() -> bool {
     unsafe {
         return SPECTRE_SETTINGS.spectre_disable_btbflush.clone();
+    }
+}
+
+#[inline(always)]
+pub fn get_spectre_disable_mpk() -> bool {
+    unsafe {
+        return SPECTRE_SETTINGS.spectre_disable_mpk.clone();
     }
 }
