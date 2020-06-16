@@ -221,13 +221,18 @@ pub fn perform_transition_protection_in() {
     if get_should_switch_mpk_in() {
         // yes, this is mpk_allow_ALL_mem not "mpk_allow_SBX_mem"
         // sbx is restricted to access only sbx memory through software sandboxing
-        // mpk is only to make sure the app doesn't get tricket to accessing sbx memory at a bad time
+        // mpk is only to make sure the app doesn't get tricked to accessing sbx memory at an incorrect time
         mpk_allow_all_mem();
     }
 }
 
 #[inline(always)]
 pub fn perform_transition_protection_out() {
+    perform_transition_protection_out_ex(false);
+}
+
+#[inline(always)]
+pub fn perform_transition_protection_out_ex(is_hostcall: bool) {
     // Hack: In an actual implementation, this if condition is bad. You would want to do this unconditionally or with cmovs
     // But that's just engineering work
     if get_should_lfence_out() {
@@ -242,7 +247,9 @@ pub fn perform_transition_protection_out() {
         }
     }
 
-    if get_should_switch_mpk_in() {
-        mpk_allow_app_mem_only();
+    if !is_hostcall {
+        if get_should_switch_mpk_in() {
+            mpk_allow_app_mem_only();
+        }
     }
 }
