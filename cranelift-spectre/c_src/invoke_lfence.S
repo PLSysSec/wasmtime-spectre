@@ -29,3 +29,17 @@ _change_mpk_domain:
     WRPKRU
     ret
 
+.text
+.globl get_mpk_domain
+#ifdef __ELF__
+.type get_mpk_domain,@function
+#else
+.globl _get_mpk_domain
+#endif
+.align 16
+get_mpk_domain:
+_get_mpk_domain:
+    endbr64
+    xor %ecx, %ecx
+    RDPKRU
+    ret

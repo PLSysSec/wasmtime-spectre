@@ -97,6 +97,7 @@ extern "C" {
     fn invoke_lfence();
     // Returns domain
     fn change_mpk_domain(domain: u32) -> u32;
+    fn get_mpk_domain() -> u32;
 }
 
 #[inline(always)]
@@ -200,6 +201,14 @@ pub fn mpk_allow_all_mem() {
     unsafe {
         change_mpk_domain(perm_bits);
     };
+}
+
+pub fn get_curr_mpk_domain() -> u32 {
+    return unsafe { get_mpk_domain() };
+}
+
+pub fn set_curr_mpk_domain(domain: u32) {
+    unsafe { change_mpk_domain(domain) };
 }
 
 #[inline(always)]

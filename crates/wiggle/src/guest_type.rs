@@ -84,12 +84,11 @@ macro_rules! primitives {
                 let ret =
                     if cranelift_spectre::runtime::get_should_switch_mpk_in() {
                         // Access to all memory
+                        let domain = cranelift_spectre::runtime::get_curr_mpk_domain();
                         cranelift_spectre::runtime::mpk_allow_all_mem();
-
                         let tmp = Ok(unsafe { *host_ptr.cast::<Self>() });
-
                         // Back to app memory only
-                        cranelift_spectre::runtime::mpk_allow_app_mem_only();
+                        cranelift_spectre::runtime::set_curr_mpk_domain(domain);
                         tmp
                     } else {
                         Ok(unsafe { *host_ptr.cast::<Self>() })
@@ -112,14 +111,13 @@ macro_rules! primitives {
                 // if we use mpk we need to briefly allow writes
                 if cranelift_spectre::runtime::get_should_switch_mpk_in() {
                     // Access to all memory
+                    let domain = cranelift_spectre::runtime::get_curr_mpk_domain();
                     cranelift_spectre::runtime::mpk_allow_all_mem();
-
                     unsafe {
                         *host_ptr.cast::<Self>() = val;
                     }
-
                     // Back to app memory only
-                    cranelift_spectre::runtime::mpk_allow_app_mem_only();
+                    cranelift_spectre::runtime::set_curr_mpk_domain(domain);
                 } else {
                     unsafe {
                         *host_ptr.cast::<Self>() = val;
