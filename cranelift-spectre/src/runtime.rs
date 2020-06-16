@@ -251,9 +251,7 @@ pub fn perform_transition_protection_out() {
         }
     }
 
-    if !is_hostcall {
-        if get_should_switch_mpk_in() {
-            mpk_allow_app_mem_only();
-        }
+    if get_should_switch_mpk_in() {
+        mpk_allow_app_mem_only();
     }
 }
