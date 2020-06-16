@@ -14,6 +14,7 @@ include = ["src/**/*", "LICENSE"]
 thiserror = "1"
 witx = { path = "../wasi-common/WASI/tools/witx", version = "0.8.5", optional = true }
 wiggle-macro = { path = "macro", version = "0.15.0" }
+cranelift-spectre = { path = "../../cranelift-spectre", version = "0.1.0" }
 
 [badges]
 maintenance = { status = "actively-developed" }
