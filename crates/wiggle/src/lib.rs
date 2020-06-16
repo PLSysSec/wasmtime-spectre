@@ -457,8 +457,23 @@ impl<'a, T> GuestPtr<'a, [T]> {
             if (*raw).len() != slice.len() {
                 return Err(GuestError::SliceLengthsDiffer);
             }
-            // ... and copy!
-            (*raw).copy_from_slice(slice);
+
+            // if we use mpk we need to briefly allow writes
+            if cranelift_spectre::runtime::get_should_switch_mpk_in() {
+                // Access to all memory
+                cranelift_spectre::runtime::mpk_allow_all_mem();
+
+                // ... and copy!
+
+                // Ideally this should be branch free copy with the ref prefix but this is a trivial fix
+                (*raw).copy_from_slice(slice);
+
+                // Back to app memory only
+                cranelift_spectre::runtime::mpk_allow_app_mem_only();
+            } else {
+                // ... and copy!
+                (*raw).copy_from_slice(slice);
+            }
             Ok(())
         }
     }
