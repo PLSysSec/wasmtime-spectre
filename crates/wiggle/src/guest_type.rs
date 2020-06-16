@@ -79,7 +79,23 @@ macro_rules! primitives {
                     Self::guest_align(),
                     Self::guest_size(),
                 )?;
-                Ok(unsafe { *host_ptr.cast::<Self>() })
+
+                // if we use mpk we need to briefly allow reads
+                let ret =
+                    if cranelift_spectre::runtime::get_should_switch_mpk_in() {
+                        // Access to all memory
+                        cranelift_spectre::runtime::mpk_allow_all_mem();
+
+                        let tmp = Ok(unsafe { *host_ptr.cast::<Self>() });
+
+                        // Back to app memory only
+                        cranelift_spectre::runtime::mpk_allow_app_mem_only();
+                        tmp
+                    } else {
+                        Ok(unsafe { *host_ptr.cast::<Self>() })
+                    };
+
+                return ret;
             }
 
             #[inline]
