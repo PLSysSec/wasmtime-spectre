@@ -194,14 +194,6 @@ pub fn mpk_allow_app_mem_only() {
     };
 }
 
-pub fn mpk_allow_sbx_mem_only() {
-    //<NoDisable_Domain1_Read><NoDisable_Domain1_Write><Disable_Domain0_Read><Disable_Domain0_Write>
-    let perm_bits = 0b0011;
-    unsafe {
-        change_mpk_domain(perm_bits);
-    };
-}
-
 pub fn mpk_allow_all_mem() {
     //<NoDisable_Domain1_Read><NoDisable_Domain1_Write><NoDisable_Domain0_Read><NoDisable_Domain0_Write>
     let perm_bits = 0b0000;
@@ -227,7 +219,10 @@ pub fn perform_transition_protection_in() {
     }
 
     if get_should_switch_mpk_in() {
-        mpk_allow_sbx_mem_only();
+        // yes, this is mpk_allow_ALL_mem not "mpk_allow_SBX_mem"
+        // sbx is restricted to access only sbx memory through software sandboxing
+        // mpk is only to make sure the app doesn't get tricket to accessing sbx memory at a bad time
+        mpk_allow_all_mem();
     }
 }
 
