@@ -237,11 +237,6 @@ pub fn perform_transition_protection_in() {
 
 #[inline(always)]
 pub fn perform_transition_protection_out() {
-    perform_transition_protection_out_ex(false);
-}
-
-#[inline(always)]
-pub fn perform_transition_protection_out_ex(is_hostcall: bool) {
     // Hack: In an actual implementation, this if condition is bad. You would want to do this unconditionally or with cmovs
     // But that's just engineering work
     if get_should_lfence_out() {
