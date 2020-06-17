@@ -27,6 +27,11 @@ pub fn expand_global_value(
         _ => panic!("Wanted global_value: {}", func.dfg.display_inst(inst, None)),
     };
 
+    // if cranelift_spectre::inst::get_curr_func() == "guest_func___main_void" {
+    //     println!("GlobalValueData:\n{}", func.display(isa));
+    // }
+
+
     match func.global_values[gv] {
         ir::GlobalValueData::VMContext => vmctx_addr(inst, func),
         ir::GlobalValueData::IAddImm {
@@ -42,6 +47,11 @@ pub fn expand_global_value(
         } => load_addr(inst, func, base, offset, global_type, readonly, isa),
         ir::GlobalValueData::Symbol { tls, .. } => symbol(inst, func, gv, isa, tls),
     }
+
+    // if cranelift_spectre::inst::get_curr_func() == "guest_func___main_void" {
+    //     println!("GlobalValueData:\n{}", func.display(isa));
+    // }
+
 }
 
 /// Expand a `global_value` instruction for a vmctx global.
@@ -87,11 +97,20 @@ fn load_addr(
     inst: ir::Inst,
     func: &mut ir::Function,
     base: ir::GlobalValue,
-    offset: ir::immediates::Offset32,
+    curr_offset: ir::immediates::Offset32,
     global_type: ir::Type,
     readonly: bool,
     isa: &dyn TargetIsa,
 ) {
+    let curr_offset_val : i32 = curr_offset.into();
+    let offset : ir::immediates::Offset32 =
+    if base == ir::GlobalValue::with_number(0).unwrap() {
+            let s = cranelift_spectre::settings::get_shadow_stack_size_with_guards() as i32;
+            let ret = curr_offset_val-  s;
+            ir::immediates::Offset32::new(ret)
+        } else {
+            curr_offset
+        };
     // We need to load a pointer from the `base` global value, so insert a new `global_value`
     // instruction. This depends on the iterative legalization loop. Note that the IR verifier
     // detects any cycles in the `load` globals.

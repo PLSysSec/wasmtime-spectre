@@ -65,6 +65,16 @@ pub fn get_use_linear_block(spectre_mitigation: SpectreMitigation) -> bool {
         spectre_mitigation == SpectreMitigation::CETASLR
 }
 
+// pub fn get_use_software_shadow_stack(spectre_mitigation: SpectreMitigation) -> bool {
+//     spectre_mitigation == SpectreMitigation::SFI ||
+//         spectre_mitigation == SpectreMitigation::SFIASLR
+// }
+
+pub fn get_shadow_stack_size_with_guards() -> usize {
+    let host_page_size = 4 * 1024;
+    1 * host_page_size + (128 * 1024) + 1 * host_page_size
+}
+
 pub fn use_spectre_mitigation_settings(
     spectre_mitigation: SpectreMitigation,
     spectre_stop_sbx_breakout: bool,
