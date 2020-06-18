@@ -423,29 +423,38 @@ pub fn get_condbr_new_cfi_label_bytes(
 }
 
 // ; curr_top = *top_ptr
-// mov rax, [r15 - 4096 - 32]
+// mov RA, [r15 - 4096 - 32]
 // ; curr_top-=8
-// sub rax, 8
+// sub RA, 8
 // ; *top_ptr = curr_top
-// mov [r15 - 4096 - 32], rax
+// mov [r15 - 4096 - 32], RA
 // ; target = call + 5
-// lea r11, [rel target]
+// lea RB, [rel target]
 // ; *curr_top = target
-// mov [rax], r11
+// mov [RA], RB
 // target:
 //
-// or the same with r10
+// 3 versions
+// RA=rax, RB=r11
+// RA=rax, RB=r10
+// RA=r10, RB=r11
 pub fn get_shadow_stack_call_guard_bytes(call_size: u8, call_reg: Vec<u16>) -> Vec<u8> {
     let mov_inst_size: u8 = 0x3;
-    let rax_version = vec![
+    let rax_r11_version = vec![
         0x49, 0x8b, 0x87, 0xe0, 0xef, 0xff, 0xff,
         0x48, 0x83, 0xe8, 0x08,
         0x49, 0x89, 0x87, 0xe0, 0xef, 0xff, 0xff,
         0x4c, 0x8d, 0x1d, mov_inst_size + call_size, 0x00, 0x00, 0x00,
         0x4c, 0x89, 0x18
     ];
-    //r10 version
-    let r10_version = vec![
+    let rax_r10_version = vec![
+        0x49, 0x8b, 0x87, 0xe0, 0xef, 0xff, 0xff,
+        0x48, 0x83, 0xe8, 0x08,
+        0x49, 0x89, 0x87, 0xe0, 0xef, 0xff, 0xff,
+        0x4c, 0x8d, 0x15, 0x08, 0x00, 0x00, 0x00,
+        0x4c, 0x89, 0x10,
+    ];
+    let r10_r11_version = vec![
         0x4d, 0x8b, 0x97, 0xe0, 0xef, 0xff, 0xff,
         0x49, 0x83, 0xea, 0x08,
         0x4d, 0x89, 0x97, 0xe0, 0xef, 0xff, 0xff,
@@ -453,10 +462,18 @@ pub fn get_shadow_stack_call_guard_bytes(call_size: u8, call_reg: Vec<u16>) -> V
         0x4d, 0x89, 0x1a,
     ];
     let ret =
-        if call_reg.contains(&R_RAX) {
-            r10_version
+        if call_reg.contains(&R_R10) {
+            assert!(!call_reg.contains(&R_RAX));
+            assert!(!call_reg.contains(&R_R11));
+            rax_r11_version
+        } else if call_reg.contains(&R_R11) {
+            assert!(!call_reg.contains(&R_RAX));
+            assert!(!call_reg.contains(&R_R10));
+            rax_r10_version
         } else {
-            rax_version
+            assert!(!call_reg.contains(&R_R10));
+            assert!(!call_reg.contains(&R_R11));
+            r10_r11_version
         };
     return ret;
 }
