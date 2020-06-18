@@ -11,12 +11,6 @@ pub fn get_endbranch() -> &'static [u8] {
     &[0xf3, 0x0f, 0x1e, 0xfa]
 }
 
-//   41 5b                   pop    %r11
-//   41 ff e3                jmpq   *%r11
-pub fn get_pop_jump_ret() -> &'static [u8] {
-    &[0x41, 0x5b, 0x41, 0xff, 0xe3]
-}
-
 pub const R_RAX: u16 = 16;
 pub const R_RCX: u16 = 17;
 pub const R_RDX: u16 = 18;
@@ -428,3 +422,66 @@ pub fn get_condbr_new_cfi_label_bytes(
     bytes
 }
 
+// ; curr_top = *top_ptr
+// mov rax, [r15 - 4096 - 32]
+// ; curr_top-=8
+// sub rax, 8
+// ; *top_ptr = curr_top
+// mov [r15 - 4096 - 32], rax
+// ; target = call + 5
+// lea r11, [rel target]
+// ; *curr_top = target
+// mov [rax], r11
+// target:
+//
+// or the same with r10
+pub fn get_shadow_stack_call_guard_bytes(call_size: u8, call_reg: Vec<u16>) -> Vec<u8> {
+    let mov_inst_size: u8 = 0x3;
+    let rax_version = vec![
+        0x49, 0x8b, 0x87, 0xe0, 0xef, 0xff, 0xff,
+        0x48, 0x83, 0xe8, 0x08,
+        0x49, 0x89, 0x87, 0xe0, 0xef, 0xff, 0xff,
+        0x4c, 0x8d, 0x1d, mov_inst_size + call_size, 0x00, 0x00, 0x00,
+        0x4c, 0x89, 0x18
+    ];
+    //r10 version
+    let r10_version = vec![
+        0x4d, 0x8b, 0x97, 0xe0, 0xef, 0xff, 0xff,
+        0x49, 0x83, 0xea, 0x08,
+        0x4d, 0x89, 0x97, 0xe0, 0xef, 0xff, 0xff,
+        0x4c, 0x8d, 0x1d, mov_inst_size + call_size, 0x00, 0x00, 0x00,
+        0x4d, 0x89, 0x1a,
+    ];
+    let ret =
+        if call_reg.contains(&R_RAX) {
+            r10_version
+        } else {
+            rax_version
+        };
+    return ret;
+}
+
+// ; curr_top = *top_ptr
+// mov r9, [r15 - 4096 - 32]
+// ; curr_top+=8
+// add r9, 8
+// ; *top_ptr = curr_top
+// mov [r15 - 4096 - 32], r9
+pub fn get_shadow_stack_postcall_guard_bytes() -> &'static [u8] {
+    &[
+        0x4d, 0x8b, 0x8f, 0xe0, 0xef, 0xff, 0xff,
+        0x49, 0x83, 0xc1, 0x08,
+        0x4d, 0x89, 0x8f, 0xe0, 0xef, 0xff, 0xff,
+    ]
+}
+
+// mov r11, [r15 - 4096 - 32]
+// pop r9
+// jmp [r11]
+pub fn get_pop_jump_ret() -> &'static [u8] {
+    &[
+        0x4d, 0x8b, 0x9f, 0xe0, 0xef, 0xff, 0xff,
+        0x41, 0x59,
+        0x41, 0xff, 0x23
+    ]
+}

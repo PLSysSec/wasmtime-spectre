@@ -51,6 +51,7 @@ use cranelift_spectre::settings::{
 fn spectre_resistance_on_func(
     _isa: &dyn TargetIsa,
     cur: &mut FuncCursor,
+    _first_block: &Block,
     first_inst: &Inst,
     _divert: &RegDiversions,
     _can_be_indirectly_called: bool,
@@ -74,6 +75,7 @@ fn spectre_resistance_on_inst(
     cur: &mut FuncCursor,
     inst: &Inst,
     divert: &RegDiversions,
+    inst_size: u8
 ) {
     let opcode = cur.func.dfg[*inst].opcode();
     let _format = opcode.format();
@@ -99,12 +101,25 @@ fn spectre_resistance_on_inst(
             }
         }
         SpectreMitigation::SFI | SpectreMitigation::SFIASLR => {
-            if opcode.is_return() && !cur.func.ret_replaced[*inst] {
-                let replacement = cranelift_spectre::inst::get_pop_jump_ret();
-                cur.func.replacement[*inst].append(&mut replacement.to_vec());
-                cur.func.ret_replaced[*inst] = true;
-            }
+            if !cur.func.call_ret_replaced[*inst] && (opcode.is_call() || opcode.is_return()){
 
+                if opcode.is_call() {
+                    let args = cur.func.dfg.inst_args(*inst);
+                    let in_regs = get_registers(&cur, &divert, args);
+
+                    let pre_guard = cranelift_spectre::inst::get_shadow_stack_call_guard_bytes(inst_size, in_regs);
+                    cur.func.pre_inst_guards[*inst].append(&mut pre_guard.to_vec());
+
+                    let post_guard = cranelift_spectre::inst::get_shadow_stack_postcall_guard_bytes();
+                    cur.func.post_inst_guards[*inst].append(&mut post_guard.to_vec());
+                }
+                else if opcode.is_return() {
+                    let replacement = cranelift_spectre::inst::get_pop_jump_ret();
+                    cur.func.replacement[*inst].append(&mut replacement.to_vec());
+                }
+
+                cur.func.call_ret_replaced[*inst] = true;
+            }
         }
         _ => {}
     };
@@ -245,13 +260,14 @@ pub fn relax_branches(
                 let enc = cur.func.encodings[inst];
 
                 if first_inst_in_func {
-                    spectre_resistance_on_func(isa, &mut cur, &inst, &divert, can_be_indirectly_called);
+                    spectre_resistance_on_func(isa, &mut cur, &block, &inst, &divert, can_be_indirectly_called);
                 }
                 if first_inst_in_block {
                     spectre_resistance_on_basic_block(isa, &mut cur, &inst, &divert, first_inst_in_func);
                 }
 
-                spectre_resistance_on_inst(isa, &mut cur, &inst, &divert);
+                let temp_inst_size= encinfo.byte_size(enc, inst, &divert, &cur.func) as u8;
+                spectre_resistance_on_inst(isa, &mut cur, &inst, &divert, temp_inst_size);
 
                 let reg_clear_bytes_size: usize = cur.func.registers_to_truncate[inst]
                     .iter()
