@@ -462,13 +462,9 @@ pub fn get_shadow_stack_call_guard_bytes(call_size: u8, call_reg: Vec<u16>) -> V
         0x4d, 0x89, 0x1a,
     ];
     let ret =
-        if call_reg.contains(&R_R10) {
-            assert!(!call_reg.contains(&R_RAX));
-            assert!(!call_reg.contains(&R_R11));
+        if !call_reg.contains(&R_RAX) && !call_reg.contains(&R_R11) {
             rax_r11_version
-        } else if call_reg.contains(&R_R11) {
-            assert!(!call_reg.contains(&R_RAX));
-            assert!(!call_reg.contains(&R_R10));
+        } else if !call_reg.contains(&R_RAX) && !call_reg.contains(&R_R10) {
             rax_r10_version
         } else {
             assert!(!call_reg.contains(&R_R10));
