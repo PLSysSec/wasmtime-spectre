@@ -36,7 +36,7 @@ thread_local! {
 
 fn update_transition_settings() {
     let mitigation = get_spectre_mitigation();
-    let should_lfence_in = mitigation != SpectreMitigation::NONE;
+    let should_lfence_in = mitigation != SpectreMitigation::NONE && mitigation != SpectreMitigation::CETONLY;
     let should_lfence_out = should_lfence_in;
     let should_flush_in =
         if get_spectre_disable_btbflush() {

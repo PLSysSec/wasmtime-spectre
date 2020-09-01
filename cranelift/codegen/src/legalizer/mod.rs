@@ -429,7 +429,7 @@ fn expand_br_table_jt(
     cfg.recompute_block(pos.func, block);
     cfg.recompute_block(pos.func, jump_table_block);
 
-    if mitigation == SpectreMitigation::CET || mitigation == SpectreMitigation::CETASLR {
+    if mitigation == SpectreMitigation::CET || mitigation == SpectreMitigation::CETASLR || mitigation == SpectreMitigation::CETONLY {
         let ebbs = pos.func.jump_tables[table].clone();
         for ebb in ebbs.iter_blocks() {
             pos.func.block_endbranch[ebb] = true;
