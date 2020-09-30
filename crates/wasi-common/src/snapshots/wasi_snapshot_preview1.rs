@@ -881,4 +881,14 @@ impl<'a> WasiSnapshotPreview1 for WasiCtx {
         }
         Ok(())
     }
+
+    fn rdtsc(&self) -> Result<types::Tsc> {
+        let mut garbage = std::mem::MaybeUninit::uninit();
+        // we don't care about what __rdtscp writes to `garbage` -- we just need to provide it with
+        // a valid place to write
+        let time = unsafe {
+            core::arch::x86_64::__rdtscp(garbage.as_mut_ptr())
+        };
+        Ok(time)
+    }
 }
