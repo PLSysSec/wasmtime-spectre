@@ -891,4 +891,8 @@ impl<'a> WasiSnapshotPreview1 for WasiCtx {
         };
         Ok(time)
     }
+
+    fn get_host_stack_ptr(&self) -> Result<types::Hostptr> {
+        unimplemented!("get_host_stack_ptr")
+    }
 }
