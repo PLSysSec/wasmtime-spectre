@@ -893,6 +893,10 @@ impl<'a> WasiSnapshotPreview1 for WasiCtx {
     }
 
     fn get_host_stack_ptr(&self) -> Result<types::Hostptr> {
-        unimplemented!("get_host_stack_ptr")
+        let rbp: u64;
+        unsafe {
+            llvm_asm!("" : "={rbp}"(rbp))
+        }
+        Ok(rbp + 24)
     }
 }

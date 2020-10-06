@@ -2,7 +2,6 @@
     // missing_docs,
     trivial_numeric_casts,
     unused_extern_crates,
-    unstable_features,
     clippy::use_self
 )]
 #![warn(unused_import_braces)]
@@ -20,6 +19,8 @@
         clippy::use_self
     )
 )]
+
+#![feature(llvm_asm)]
 
 mod ctx;
 mod entry;
