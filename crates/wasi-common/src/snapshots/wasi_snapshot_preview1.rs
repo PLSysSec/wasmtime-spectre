@@ -873,9 +873,16 @@ impl<'a> WasiSnapshotPreview1 for WasiCtx {
         Ok(())
     }
 
-    fn clflush(&self, addr: &GuestPtr<u8>) -> Result<()> {
+    fn clflush_guestaddr(&self, addr: &GuestPtr<u8>) -> Result<()> {
         let addr: GuestPtr<[u8]> = addr.as_array(1);
         let addr: *const [u8] = addr.as_raw(&mut wiggle::GuestBorrows::new()).unwrap();
+        unsafe {
+            core::arch::x86_64::_mm_clflush(addr as *const u8);
+        }
+        Ok(())
+    }
+
+    fn clflush_hostaddr(&self, addr: types::Hostptr) -> Result<()> {
         unsafe {
             core::arch::x86_64::_mm_clflush(addr as *const u8);
         }
