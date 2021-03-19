@@ -2744,7 +2744,7 @@ pub(crate) fn define<'shared>(
     );
 
     recipes.add_template_recipe(
-        EncodingRecipeBuilder::new("jt_entry_cfi", &formats.branch_table_entry, 2+5)
+        EncodingRecipeBuilder::new("jt_entry_cfi", &formats.branch_table_entry, 2+5+6)
             .operands_in(vec![gpr, gpr])
             .operands_out(vec![gpr])
             .clobbers_flags(false)
@@ -2769,6 +2769,10 @@ pub(crate) fn define<'shared>(
                         modrm_sib(out_reg0, sink);
                         sib(imm.trailing_zeros() as u8, in_reg0, in_reg1, sink);
                     }
+
+                    // Add a heap dependency to this --- load zero from the heap and add
+                    use cranelift_spectre::inst::get_add_heapzero_bytes;
+                    for byte in get_add_heapzero_bytes(out_reg0) { sink.put1(*byte); }
                 "#,
             ),
     );
