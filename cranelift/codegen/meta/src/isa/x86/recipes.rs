@@ -2744,7 +2744,7 @@ pub(crate) fn define<'shared>(
     );
 
     recipes.add_template_recipe(
-        EncodingRecipeBuilder::new("jt_entry_cfi", &formats.branch_table_entry, 2+5+6)
+        EncodingRecipeBuilder::new("jt_entry_cfi", &formats.branch_table_entry, 2+5+7)
             .operands_in(vec![gpr, gpr])
             .operands_out(vec![gpr])
             .clobbers_flags(false)
