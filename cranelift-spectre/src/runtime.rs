@@ -11,6 +11,8 @@ struct SpectreTransitionSettings {
     pub should_flush_out: bool,
     pub should_switch_mpk_in: bool,
     pub should_switch_mpk_out: bool,
+    pub should_switch_hfi_in: bool,
+    pub should_switch_hfi_out: bool,
 }
 
 thread_local! {
@@ -31,6 +33,8 @@ thread_local! {
         should_flush_out : false,
         should_switch_mpk_in : false,
         should_switch_mpk_out : false,
+        should_switch_hfi_in : false,
+        should_switch_hfi_out : false,
     });
 }
 
@@ -69,6 +73,9 @@ fn update_transition_settings() {
         };
     let should_switch_mpk_out = should_switch_mpk_in;
 
+    let should_switch_hfi_in = mitigation == SpectreMitigation::HFI;
+    let should_switch_hfi_out = should_switch_hfi_in;
+
     let transition_settings = SpectreTransitionSettings {
         should_lfence_in,
         should_lfence_out,
@@ -76,6 +83,8 @@ fn update_transition_settings() {
         should_flush_out,
         should_switch_mpk_in,
         should_switch_mpk_out,
+        should_switch_hfi_in,
+        should_switch_hfi_out
     };
     SPECTRE_TRANSITION_SETTINGS.with(|spectre_transition_settings|{
         *spectre_transition_settings.borrow_mut() = transition_settings;
@@ -98,6 +107,8 @@ extern "C" {
     // Returns domain
     fn change_mpk_domain(domain: u32) -> u32;
     fn get_mpk_domain() -> u32;
+    fn invoke_hfi_enter_sandbox();
+    fn invoke_hfi_exit_sandbox();
 }
 
 #[inline(always)]
@@ -183,6 +194,18 @@ pub fn get_should_switch_mpk_out() -> bool {
         return spectre_transition_settings.borrow().should_switch_mpk_out;
     })
 }
+#[inline(always)]
+pub fn get_should_switch_hfi_in() -> bool {
+    SPECTRE_TRANSITION_SETTINGS.with(|spectre_transition_settings|{
+        return spectre_transition_settings.borrow().should_switch_hfi_in;
+    })
+}
+#[inline(always)]
+pub fn get_should_switch_hfi_out() -> bool {
+    SPECTRE_TRANSITION_SETTINGS.with(|spectre_transition_settings|{
+        return spectre_transition_settings.borrow().should_switch_hfi_out;
+    })
+}
 
 // Assumes all app pages has pkey = 0 (default), sbx pages have pkey = 1
 // pkru bits ...<Disable_Domain1_Read><Disable_Domain1_Write><Disable_Domain0_Read><Disable_Domain0_Write>
@@ -233,6 +256,12 @@ pub fn perform_transition_protection_in() {
         // mpk is only to make sure the app doesn't get tricked to accessing sbx memory at an incorrect time
         mpk_allow_all_mem();
     }
+
+    if get_should_switch_hfi_in() {
+        unsafe {
+            invoke_hfi_enter_sandbox();
+        }
+    }
 }
 
 #[inline(always)]
@@ -253,5 +282,11 @@ pub fn perform_transition_protection_out() {
 
     if get_should_switch_mpk_in() {
         mpk_allow_app_mem_only();
+    }
+
+    if get_should_switch_hfi_out() {
+        unsafe {
+            invoke_hfi_exit_sandbox();
+        }
     }
 }

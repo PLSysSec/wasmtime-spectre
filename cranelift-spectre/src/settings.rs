@@ -31,6 +31,7 @@ pub enum SpectreMitigation {
     SFIASLR,
     CETASLR,
     CETONLY,
+    HFI
 }
 
 #[derive(PartialEq, Debug, Clone, Copy, FromPrimitive)]
